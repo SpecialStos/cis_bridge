@@ -1,0 +1,20 @@
+{
+  "name": "cis_bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Integrator SDK: one adapter and one conformance test per third-party target.",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "scripts": {
+    "test": "node test/run.js",
+    "test:luacheck": "node tools/luacheck.js",
+    "test:api": "node tools/validate-api.js --api api.lua --resource .",
+    "test:api-selftest": "node tools/validate-api.js --selftest",
+    "test:all": "npm run test:luacheck && npm run test && npm run test:api-selftest && npm run test:api"
+  },
+  "devDependencies": {
+    "fengari": "^0.1.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

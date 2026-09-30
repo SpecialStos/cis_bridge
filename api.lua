@@ -1,0 +1,148 @@
+-- =============================================================================
+--  cis_bridge -- the machine-readable public contract
+--
+--  This file is DATA. It defines nothing, runs nothing, and is deliberately not
+--  listed in fxmanifest.lua. Read it on demand, and run `npm run test:api`,
+--  which validates it against what the code actually registers and fails on the
+--  difference.
+--
+--  ONE EXPORT PER ADAPTER, NOT ONE PER SLOT
+--
+--  This is the shape decision the whole resource turns on, so it is worth
+--  stating here as well as in the code. Two adapters registering the same export
+--  name means the second silently replaces the first, so whichever file loaded
+--  last answers for every capability -- and a server with ox_target and no
+--  qb-target ends up served by whichever qb adapter ran last, which fails on
+--  every call and names a resource that is not even installed.
+--
+--  `api = 1` is the CONTRACT MAJOR and is not the product version.
+-- =============================================================================
+
+return {
+    name = 'cis_bridge',
+    version = '1.0.0',
+    api = 1,
+    schema = 0,
+
+    exports = {
+        -- --------------------------------------------------------- targets
+        -- Each is registered into cis_libs as the `target` capability. The
+        -- provider receives a spec table and answers ok[, reason] -- see
+        -- Cis.target.add for the shape, which is the abstraction's, not ours.
+        CisBridgeTargetOx = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'ox_target. Returns { available, name, create, remove, exists }. Registered only when ox_target is started AND the configured target is ox_target',
+            realm = 'client',
+            signature = '()',
+        },
+        CisBridgeTargetQb = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'qb-target. Takes a box zone as three numbers where ox_target takes a vector3, which is why it cannot be a flag on the other one',
+            realm = 'client',
+            signature = '()',
+        },
+
+        -- -------------------------------------------------------- database
+        -- Registered into cis_libs as the `database` capability. All five are
+        -- AWAIT-style: they yield and answer nil at their deadline, and a nil
+        -- means "timed out or unavailable", never "no rows".
+        CisBridgeDatabaseOxmysql = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'oxmysql. The only target that supports Cis.db.transaction. Probes for the single/query exports and falls back, so an older build still serves both',
+            realm = 'server',
+            signature = '()',
+        },
+        CisBridgeDatabaseMysqlConnector = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'mysql-connector / mysql-async. Callback-first, bridged to await with a hard deadline. Refuses a transaction rather than faking one',
+            realm = 'server',
+            signature = '()',
+        },
+        CisBridgeDatabaseGhmatti = {
+            since = '1.0.0', ['until'] = '3.0.0', stable = false, deprecated = true,
+            use = 'ghmattimysql, deprecated upstream. Present so installing the bridge does not break the last server still running it',
+            realm = 'server',
+            signature = '()',
+        },
+        CisBridgeDatabaseMongodb = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'mongodb. Registers so the platform can say it does not support MongoDB, rather than reporting a missing database capability',
+            realm = 'server',
+            signature = '()',
+        },
+
+        -- ------------------------------------------------------- inventory
+        -- Registered into cis_libs as `inventoryProvider`, BEHIND the
+        -- inventory service in cis_core. Two hops on purpose: the service is
+        -- the name -> amount normalisation every consumer depends on, and the
+        -- provider is the third-party call underneath it. Either can be
+        -- replaced alone.
+        --
+        -- NONE of these is registered on the client. The client gets its counts
+        -- from a snapshot the server pushes; a client-side provider would be a
+        -- second source of truth about what a player is carrying.
+        CisBridgeInventoryOx = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'ox_inventory. GPL-3.0: isolated in this one file, never vendored, never modified',
+            realm = 'server',
+            signature = '()',
+        },
+        CisBridgeInventoryQb = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'qb-inventory. Takes no metadata, and reports refusal as a STRING -- both differ from the others and neither can be a flag',
+            realm = 'server',
+            signature = '()',
+        },
+        CisBridgeInventoryQs = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'qs-inventory',
+            realm = 'server',
+            signature = '()',
+        },
+        CisBridgeInventoryCodem = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'codem-inventory. The only one with no boolean in its contract: HasItem and AddItem answer counts and nil',
+            realm = 'server',
+            signature = '()',
+        },
+
+        -- --------------------------------------------------------- discord
+        CisBridgeDiscord = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'Discord webhooks. The ONLY outbound network request in the platform, which is why it is a file here rather than a function in a library. Returns { Log, QueueDepth }',
+            realm = 'server',
+            signature = '()',
+        },
+
+        -- ---------------------------------------------------- conformance
+        RunConformance = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'The same as the cis_bridge console command. Runs every registered target, or one named. Sends nothing and writes nothing to a player',
+            realm = 'server',
+            signature = '(target)',
+        },
+        GetConformanceResults = {
+            since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'The last run, as an array of { target, name, ok, detail }. For a support thread',
+            realm = 'server',
+            signature = '()',
+        },
+    },
+
+    -- cis_bridge publishes no net events.
+    --
+    -- It registers a net EVENT HANDLER for the client conformance results,
+    -- which is not the same thing: a handler consumes, a publisher declares.
+    -- The event belongs to this resource and is documented here as a
+    -- dependency so the wire is visible in one place.
+    events = {
+        ['cis_bridge:client:conformance'] = {
+            since = '1.0.0',
+            payload = 'server to client: no arguments, asks the client to run its own conformance checks',
+        },
+        ['cis_bridge:server:conformanceResults'] = {
+            since = '1.0.0',
+            payload = 'client to server: (results) the client half of a conformance run',
+        },
+    },
+}

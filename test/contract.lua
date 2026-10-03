@@ -1,7 +1,7 @@
 -- Contract compliance: does this resource build against cis_libs the way the
 -- contract says it should?
 --
--- The other three suites ask whether the CODE does what it says. This one asks
+-- The other suites ask whether the CODE does what it says. This one asks
 -- whether the code and the CONTRACT agree, which is a different question and the
 -- only one that catches a platform moving underneath a product that still passes
 -- every other test.

@@ -327,6 +327,14 @@ interesting than the ones that died:**
   code gets disabled, and then the rule is gone and the bug it was for is still
   there.
 
+The assertion count is now **checked rather than trusted**. It was quoted in
+four files, was wrong in three of them at least once — still saying 128 while the
+resource passed 534, with `test:all` green throughout — and every fix was a
+silent miss because the string being replaced had already changed underneath it.
+`npm run check:counts` now runs the suites, sums what they reported, and fails
+when any file that quotes the number disagrees, and it checks the suite count
+separately because that drifts on its own.
+
 Three harness bugs are recorded for the same reason. A `require` path was emitted
 as JSON, which is not a Lua table constructor. `fengari` has no filesystem, so
 the contract suite died on `io.open` and now has its source injected by the

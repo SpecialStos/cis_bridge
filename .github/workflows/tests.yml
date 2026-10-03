@@ -69,6 +69,18 @@ jobs:
           done
           echo "All tools present."
 
+      - name: The documentation states the real assertion count
+        # The number appears in four files and was wrong in three of them at
+        # least once -- 128, quoted long after the resource passed 534, with
+        # `test:all` green throughout. A number nobody checks drifts, and a
+        # drifted count is the kind of detail a reader checks their trust
+        # against.
+        #
+        # This runs the suites, sums what they reported, and fails when any file
+        # that quotes the number disagrees. It also checks the SUITE count, which
+        # is a separate claim and drifts separately.
+        run: npm run check:counts
+
       - name: Lint
         run: npm run lint
 
@@ -93,7 +105,7 @@ jobs:
         run: npm run test:syntax
 
       - name: Run the test suites
-        # Three suites, each in a fresh Lua state. 128 assertions.
+        # Ten suites, each in a fresh Lua state. 570 assertions.
         run: npm test
 
       - name: Validate api.lua against the registered surface

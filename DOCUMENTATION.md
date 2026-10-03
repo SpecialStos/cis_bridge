@@ -804,7 +804,15 @@ already has every permission you have. These are guards against accidents.
 npm install
 npm test          # 570 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
+                  # + lint + the generated-docs check + the count check
 ```
+
+**The count is checked, not trusted.** It appears in four files — this one, the
+README, the changelog and a comment in the workflow — and it was wrong in three
+of them at least once while `test:all` stayed green. `npm run check:counts` runs
+the suites, sums what they reported, and fails when any file that quotes the
+number disagrees. It checks the suite count too, which is a separate claim and
+drifts separately.
 
 Ten suites, each in a **fresh Lua state** so one cannot read another's globals:
 

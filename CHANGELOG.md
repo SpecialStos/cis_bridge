@@ -12,6 +12,22 @@ The release where a stock install stopped being broken.
 
 ### Fixed
 
+- **The resource no longer depends on `require` resolving dotted paths.**
+  `adapters/discord/embed.lua` and `server/ratelimit.lua` were loaded with
+  `require 'server.ratelimit'`, so a unit suite could reach them without the
+  FiveM engine. That put a boot-blocking unknown on the table: **not one dotted
+  `require` exists between cis_libs, cis_core, cis_keys, cis_admin, phylax_ac
+  and cis_inventory** — every sibling resource loads shared code through
+  explicit `fxmanifest` entries. If FiveM's `require` does not resolve
+  resource-relative dotted paths, the resource does not START: no partial
+  failure, no diagnostic, a customer with a dead resource.
+
+  Both now publish a global for the file that reads them and are ordered by the
+  manifest, and `test/contract.lua` checks that ordering — swapping either pair
+  of lines fails a test rather than producing a server whose Discord adapter
+  holds a nil builder until a log line is sent. They stay modules rather than
+  inlined code, because that is what lets the unit suites exercise them without
+  an engine, and being listed in the manifest costs that nothing.
 - **Transactions silently dropped their bind values.** `cis_libs` documents a
   transaction entry as `{ query = sql, params = { ... } }` and that is what every
   consumer writes. oxmysql's entry type is `{ query, parameters?, values? }` —
@@ -300,7 +316,7 @@ boundary.
 
 ### Verification
 
-570 assertions across ten suites, each in a fresh Lua state so one cannot read
+582 assertions across ten suites, each in a fresh Lua state so one cannot read
 another's globals. Every fix above ships with an assertion that was observed
 failing first, and the ones that matter were mutation-checked by hand. Thirty-eight
 mutations were applied and reverted across the three releases in this file.

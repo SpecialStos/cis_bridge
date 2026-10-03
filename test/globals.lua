@@ -97,6 +97,10 @@ setmetatable(_G, {
 -- is useful is not a watcher.
 for _, name in ipairs({
     'Bridge', 'Conformance', 'Report', 'DiscordQueue',
+    -- The two published modules. They exist so the unit suites can load them
+    -- without the FiveM engine, and the manifest lists them ahead of the file
+    -- that reads each one -- see fxmanifest.lua.
+    'CisBridgeEmbed', 'CisBridgeRateLimit',
     'exports', 'CreateThread', 'RegisterNetEvent', 'RegisterCommand',
     'AddEventHandler', 'GetResourceState', 'GetCurrentResourceName',
     'GetResourceMetadata', 'GetGameTimer', 'Wait', 'GetPlayers',
@@ -271,17 +275,49 @@ local OWNERS = {
     Conformance = 'server/conformance.lua',
     Report = 'server/report.lua',
     DiscordQueue = 'adapters/discord/webhooks.lua',
+    CisBridgeEmbed = 'adapters/discord/embed.lua',
+    CisBridgeRateLimit = 'server/ratelimit.lua',
 }
-local OWNED = { 'Bridge', 'Conformance', 'Report', 'DiscordQueue' }
+local OWNED = { 'Bridge', 'Conformance', 'Report', 'DiscordQueue',
+    'CisBridgeEmbed', 'CisBridgeRateLimit' }
+
+-- CLEARED ONCE, HERE, BEFORE THE SWEEP -- and not per file.
+--
+-- The sweep re-loads files the loop above has already loaded once, so without
+-- this every owned global is already present by the time it starts: `before` is
+-- true for all of them everywhere, and the sweep can never attribute one to
+-- anything. A file creating a global it does not own then passes, which is the
+-- whole rule.
+--
+-- Once, not per file, because two files now depend on a global published by an
+-- earlier one and clearing per file loads the consumer against nil.
+for _, name in ipairs(OWNED) do
+    rawset(_G, name, nil)
+end
 
 for _, rel in ipairs(SHIPPED_FILES) do
+    -- "Did THIS file create it?", which is a before-and-after question and not
+    -- a presence question.
+    --
+    -- Both simpler versions of it were wrong, and both produced findings about
+    -- files that were fine. Clearing every owned global before each file
+    -- breaks any file that DEPENDS on one: `server/conformance.lua` then loads
+    -- against a nil cooldown, aborts before `Conformance = {}`, and the suite
+    -- reports that the runner creates `Conformance` from the wrong file.
+    -- Clearing only the file's own leaves everything an earlier file created in
+    -- place, and then every later file is accused of creating all of them.
+    --
+    -- So: remember which were already there, load, and report only what is new.
+    local before = {}
     for _, name in ipairs(OWNED) do
-        rawset(_G, name, nil)
+        before[name] = rawget(_G, name) ~= nil
     end
+
     pcall(dofile, rel)
+
     for _, name in ipairs(OWNED) do
-        if rawget(_G, name) ~= nil then
-            -- `rel` against the OWNER. The first version compared `name` against
+        if not before[name] and rawget(_G, name) ~= nil then
+            -- `rel` against the OWNER. An earlier version compared `name` against
             -- `OWNERS[name]` -- the global's name against the file that should
             -- create it -- which is never equal, so every correct file failed.
             -- A rule that fails on correct code gets disabled, and then the rule
@@ -290,8 +326,10 @@ for _, rel in ipairs(SHIPPED_FILES) do
                 ('%s creates the global %s, which only %s may create')
                     :format(rel, name, tostring(OWNERS[name])))
         end
-        rawset(_G, name, nil)
     end
+
+    -- Leave the globals this file owns behind: the next file may depend on one,
+    -- and `before` is what stops the credit being given twice.
 end
 
 -- And the owners really do create them, or the map above is a wish list.
@@ -305,9 +343,11 @@ end
 
 -- Restore, because later checks read them.
 pcall(dofile, 'shared/bridge.lua')
-pcall(dofile, 'server/conformance.lua')
-pcall(dofile, 'server/report.lua')
+pcall(dofile, 'adapters/discord/embed.lua')
 pcall(dofile, 'adapters/discord/webhooks.lua')
+pcall(dofile, 'server/report.lua')
+pcall(dofile, 'server/ratelimit.lua')
+pcall(dofile, 'server/conformance.lua')
 
 check(rawget(_G, 'Bridge') ~= nil, 'and the four are back after the ownership sweep')
 

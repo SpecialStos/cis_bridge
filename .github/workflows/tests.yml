@@ -105,7 +105,7 @@ jobs:
         run: npm run test:syntax
 
       - name: Run the test suites
-        # Ten suites, each in a fresh Lua state. 570 assertions.
+        # Ten suites, each in a fresh Lua state. 582 assertions.
         run: npm test
 
       - name: Validate api.lua against the registered surface

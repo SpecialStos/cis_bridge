@@ -312,6 +312,80 @@ for _, rel in ipairs(SHIPPED) do
 end
 check(true, 'the namespace scan completed over every shipped file')
 
+-- ============================ 5b. THE MANIFEST'S ORDER IS A CORRECTNESS PROPERTY
+--
+-- Two modules publish a global for the file that reads them, and the manifest
+-- is the only thing that guarantees the producer loads first:
+--
+--   adapters/discord/embed.lua  ->  CisBridgeEmbed      ->  adapters/discord/webhooks.lua
+--   server/ratelimit.lua        ->  CisBridgeRateLimit  ->  server/conformance.lua
+--
+-- That was `require`d by dotted path until this release, and no sibling resource
+-- in this platform does that -- every one of them loads shared code through
+-- explicit manifest entries. If `require` did not resolve, the resource would not
+-- START, so the mechanism was changed and the ordering became load-bearing.
+--
+-- Which means the ORDER is a rule, and nothing was checking it: swapping the two
+-- lines in fxmanifest.lua passes every suite in this repository, and produces a
+-- server whose Discord adapter holds a nil builder until a log line is sent.
+-- That is precisely the failure mode the previous mechanism had, reached by a
+-- different route.
+--
+-- Derived from the manifest rather than hard-coded, so moving a file is caught
+-- as a moved file and not as a hard-coded list disagreeing with reality.
+local PUBLISHERS = {
+    CisBridgeEmbed = 'adapters/discord/embed.lua',
+    CisBridgeRateLimit = 'server/ratelimit.lua',
+}
+
+local function positionIn(section, file)
+    local body = manifest:match(section .. '%s*{(.-)}')
+    if not body then return nil end
+    local index = 0
+    for entry in body:gmatch("['\"]([^'\"]+)['\"]") do
+        index = index + 1
+        if entry == file then return index end
+    end
+    return nil
+end
+
+for global, producer in pairs(PUBLISHERS) do
+    -- Every shipped file that READS it. The producer names the global on the
+    -- line that assigns it, so it is excluded -- a file cannot consume a global
+    -- before creating it, and including it makes the rule demand that a file
+    -- precede itself.
+    local consumers = {}
+    for _, rel in ipairs(SHIPPED) do
+        if rel ~= producer then
+            local lines = linesOf(rel, BARE)
+            for _, line in ipairs(lines or {}) do
+                if line:find('%f[%w_]' .. global .. '%f[^%w_]') then
+                    consumers[#consumers + 1] = rel
+                    break
+                end
+            end
+        end
+    end
+    check(#consumers > 0,
+        ('%s is actually consumed, so its load order matters'):format(global))
+
+    local producerAt = positionIn('server_scripts', producer)
+    check(producerAt ~= nil,
+        ('%s is listed in server_scripts, because the manifest is what orders it')
+            :format(producer))
+
+    for _, consumer in ipairs(consumers) do
+        local consumerAt = positionIn('server_scripts', consumer)
+        check(consumerAt ~= nil,
+            ('%s reads %s and is therefore listed in server_scripts too')
+                :format(consumer, global))
+        check(producerAt ~= nil and consumerAt ~= nil and producerAt < consumerAt,
+            ('fxmanifest loads %s (position %s) before %s (position %s): a consumer '
+                .. 'that loads first reads a global nobody has written yet')
+                :format(producer, tostring(producerAt), consumer, tostring(consumerAt)))
+    end
+end
+
 -- ============================== 6. NO cis_libs INTERNAL FILES ARE INCLUDED
 --
 -- The contract is explicit: no `@cis_libs/server/registry.lua` or any other

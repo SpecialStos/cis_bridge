@@ -116,7 +116,9 @@ end
 -- engine. There are no cosmetics because cis_libs will not re-export webhook
 -- configuration to a foreign resource, so there is nothing truthful to put in
 -- one -- and an empty optional section is rejected outright.
-local DiscordEmbed = require 'adapters.discord.embed'
+-- Published by adapters/discord/embed.lua, which fxmanifest loads FIRST.
+-- See that file's footer for why this is not `require`.
+local DiscordEmbed = CisBridgeEmbed
 
 local function embedPayload(title, message, color)
     -- cis_libs's version, not this resource's. The message says it is a

@@ -82,4 +82,20 @@ function M.build(title, message, color, version)
     }
 end
 
+-- PUBLISHED AS WELL AS RETURNED.
+--
+-- A global, not only a return value, because the consumer is a DIFFERENT FILE
+-- in the same resource and the manifest is what guarantees the order they load
+-- in. `return` alone would mean `require`, and `require` is a load-time
+-- mechanism nothing in this platform proves: every sibling resource loads shared
+-- code through explicit fxmanifest entries, not one dotted `require` between
+-- them. If that assumption is wrong the resource does not start, which is the
+-- one failure a customer cannot work around.
+--
+-- The global is namespaced for the same reason every other global here is --
+-- `test/globals.lua` asserts that exactly one file may create it, so an
+-- accidental second writer is a test failure rather than a mystery six months
+-- later.
+CisBridgeEmbed = M
+
 return M

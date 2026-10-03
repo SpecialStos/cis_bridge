@@ -44,7 +44,10 @@
 --      cis_bridge test              -- everything
 --      cis_bridge test database     -- one target
 
-local Cooldown = require 'server.ratelimit'
+-- Published by server/ratelimit.lua, which fxmanifest loads FIRST. That
+-- ordering is the whole reason this is a global and not a `require`:
+-- see the footer of adapters/discord/embed.lua.
+local Cooldown = CisBridgeRateLimit
 
 Conformance = {}
 

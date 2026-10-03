@@ -344,6 +344,12 @@ check(DiscordEmbed.build('t', 'm', 'no-such-colour', '1').embeds[1].color
 -- loop, which never returns. Running it here would hang the suite, so the
 -- export and the queue are taken and the loop is left alone -- which is fine,
 -- because the loop is the one part of this file with no decision in it.
+-- The embed module is loaded FIRST, because fxmanifest loads it first and
+-- webhooks.lua reads `CisBridgeEmbed` at its top level. Reproducing the
+-- manifest's order here is the point: if the two ever swap, this suite
+-- fails the same way the resource would -- rather than the ordering being
+-- something only a live server could discover.
+dofile('adapters/discord/embed.lua')
 local discordExports = loadAdapter('adapters/discord/webhooks.lua', nil, { runThread = false })
 local DiscordCapability = discordExports.CisBridgeDiscord and
     discordExports.CisBridgeDiscord()

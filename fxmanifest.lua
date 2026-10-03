@@ -99,20 +99,32 @@ client_scripts {
 }
 
 server_scripts {
-    -- TWO files are deliberately NOT listed here, and both are `require`d by the
-    -- file that needs them:
+    -- LOAD ORDER IS A CORRECTNESS PROPERTY, NOT A STYLE CHOICE.
     --
-    --   adapters/discord/embed.lua  -- the webhook payload builder
-    --   server/ratelimit.lua        -- the per-source cooldown
+    -- Two modules publish themselves as globals for the file that reads them,
+    -- and the manifest is what guarantees the consumer loads after the producer:
     --
-    -- Listing them as well would run each twice: once as a script and once as a
-    -- module. Being invisible to the manifest is the price of being loadable
-    -- without the engine, which is what lets the unit suite exercise both -- and
-    -- the empty-footer 400 and the cooldown are exactly the two things that must
-    -- not be verified only on a live server.
+    --   adapters/discord/embed.lua  ->  CisBridgeEmbed      ->  webhooks.lua
+    --   server/ratelimit.lua        ->  CisBridgeRateLimit  ->  conformance.lua
     --
-    -- Both are still found by every check that walks the filesystem, so the
-    -- syntax check, the api validator and the GPL-isolation grep all see them.
+    -- Both were `require`d by dotted path until now. That was a load-time
+    -- mechanism NOTHING IN THIS PLATFORM PROVES -- every sibling resource loads
+    -- shared code through explicit fxmanifest entries, and there is not one
+    -- dotted `require` between cis_libs, cis_core, cis_keys, cis_admin,
+    -- phylax_ac and cis_inventory. If FiveM's `require` does not resolve
+    -- resource-relative dotted paths, the resource does not START: no partial
+    -- failure, no diagnostic, a customer with a dead resource.
+    --
+    -- They stay modules rather than code inlined into their consumers, because
+    -- that is what lets the unit suite load them without the engine -- and the
+    -- empty-footer 400 and the cooldown guard are exactly the two things that
+    -- must not be verified only on a live server. Being listed in the manifest
+    -- costs that nothing: `dofile` reads a file the same way whether the
+    -- manifest mentions it or not.
+    --
+    -- Every check that walks the filesystem still sees them, so the syntax
+    -- check, the api validator, the conformance suite and the GPL-isolation
+    -- grep all cover both files.
     'adapters/database/oxmysql.lua',
     'adapters/database/mysql_connector.lua',
     'adapters/database/ghmattimysql.lua',
@@ -121,10 +133,9 @@ server_scripts {
     'adapters/inventory/qb_inventory.lua',
     'adapters/inventory/qs_inventory.lua',
     'adapters/inventory/codem_inventory.lua',
+    'adapters/discord/embed.lua',
     'adapters/discord/webhooks.lua',
-    -- After the adapters, so `Report` exists by the time a console command can
-    -- reach it. The boot thread inside it waits for the slowest adapter anyway,
-    -- so this ordering is about the command, not about the report.
     'server/report.lua',
+    'server/ratelimit.lua',
     'server/conformance.lua',
 }

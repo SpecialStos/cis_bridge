@@ -14,18 +14,21 @@
 // (`` `WEAPON_X` ``), which is the same exemption CI applies, so those are
 // reported as skipped rather than failures.
 //
-// THE SECOND JOB, WHICH IS THE INTERESTING ONE
+// THE SECOND JOB, AND IT IS NOW A GUARD RATHER THAN A FIX
 //
-// Two modules are loaded by `require` rather than listed in fxmanifest:
-// `adapters/discord/embed.lua` and `server/ratelimit.lua`. Both have to be
-// loadable without the FiveM engine so a unit suite can exercise them, and that
-// is a real benefit -- the empty-footer 400 and the cooldown guard are exactly
-// the two things that should not be verified only on a live server.
+// Nothing in this resource uses `require` any more. Two modules used to be
+// loaded that way so the unit suites could reach them without the FiveM engine,
+// and that put a load-time dependency on a mechanism this platform does not
+// otherwise use: not one dotted `require` exists between cis_libs, cis_core,
+// cis_keys, cis_admin, phylax_ac and cis_inventory. If FiveM's `require` did not
+// resolve resource-relative dotted paths the resource would not START, which is
+// the one failure a customer cannot work around. They are published as globals
+// now and ordered by fxmanifest, and `test/contract.lua` checks that ordering.
 //
-// It is also a real risk. A typo in either path fails nothing here, nothing in
-// `npm test`, and nothing in CI. It raises during resource load, on a customer's
-// server, with a green build behind it. So the paths are resolved against the
-// same tree the engine would resolve them from, before that can happen.
+// This check remains, because the moment somebody reintroduces a `require` --
+// which is the obvious thing to reach for when adding a module -- a typo in the
+// path fails nothing here, nothing in `npm test`, and nothing in CI. It raises
+// during resource load on a customer's server with a green build behind it.
 //
 // The module name uses `.` as a directory separator, which is what Lua's
 // `require` does with it. That is checked rather than assumed, because it is the

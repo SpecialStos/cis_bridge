@@ -802,7 +802,7 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 570 assertions, no FiveM server required
+npm test          # 582 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
                   # + lint + the generated-docs check + the count check
 ```
@@ -889,16 +889,24 @@ client/conformance.lua
 test/  tools/
 ```
 
-**Two files are `require`d rather than listed in `fxmanifest`**, because both have
-to be loadable without the FiveM engine so a unit suite can exercise them:
+**Two files publish a global for the file that reads them**, and the manifest
+orders them:
 
-| Module | Required by | What the suite proves about it |
-|---|---|---|
-| `adapters/discord/embed.lua` | the Discord adapter | that the payload contains no empty table, which is the 400 |
-| `server/ratelimit.lua` | the conformance runner | that the guard closes, per source, and survives a recycled id |
+| Module | Publishes | Read by | What the suite proves about it |
+|---|---|---|---|
+| `adapters/discord/embed.lua` | `CisBridgeEmbed` | the Discord adapter | the payload contains no empty table, which is the 400 |
+| `server/ratelimit.lua` | `CisBridgeRateLimit` | the conformance runner | the guard closes, per source, and survives a recycled id |
 
-The cost is a path that only fails at resource load, so `tools/luacheck.js`
-resolves every `require` against the tree on every run.
+They were `require`d by dotted path until 1.1.0, and that was a **boot-blocking
+unknown**: not one dotted `require` exists between `cis_libs`, `cis_core`,
+`cis_keys`, `cis_admin`, `phylax_ac` and `cis_inventory`, and if FiveM's
+`require` did not resolve resource-relative dotted paths the resource would not
+start at all. So the ordering is a correctness property, and `test/contract.lua`
+checks it — swapping the two lines in `fxmanifest.lua` fails a test.
+
+Being modules rather than inlined code is what lets the unit suites load them
+without the engine, and that cost nothing: `dofile` reads a file the same way
+whether the manifest mentions it or not.
 
 ---
 

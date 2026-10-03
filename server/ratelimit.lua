@@ -136,4 +136,9 @@ function Cooldown:held()
     return n
 end
 
+-- PUBLISHED AS WELL AS RETURNED. See the footer of
+-- adapters/discord/embed.lua: fxmanifest loads this file before
+-- server/conformance.lua, which reads it, and no `require` is involved.
+CisBridgeRateLimit = Cooldown
+
 return Cooldown

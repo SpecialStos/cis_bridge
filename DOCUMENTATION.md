@@ -63,6 +63,9 @@ ensure cis_core
 ensure cis_bridge
 ```
 
+The configuration this resource reads is §6.5. The live-verification
+procedure is **[test/live/RUNBOOK.md](test/live/RUNBOOK.md)**.
+
 **Start order does not matter.** An adapter waits up to 60 seconds for its
 target to start, so `ensure cis_bridge` above `ensure ox_target` is fine. This
 was not true in 1.0.0: the adapter checked once, gave up, and never registered
@@ -657,6 +660,68 @@ Verify the export signatures against the target's own source, not against a
 remembered API. Every third-party shape this resource adapts was checked against
 the upstream repository, and the two that had been written from memory were both
 wrong.
+
+---
+
+## §6.5 — Configuration this resource reads
+
+**cis_bridge has no config file of its own.** That is a decision, not an
+omission: two config files describing one server is two places to be wrong, and
+the disagreement between them is invisible until an adapter silently refuses to
+register.
+
+It asks `cis_libs` instead, which asks whichever resource owns the config file —
+`cis_core` on a stock install. So a server has exactly **one** place where these
+are set, and it is the place the rest of the platform already reads.
+
+Three keys are read. Every value is a **resource name to look for**, never a
+connection string and never a database name.
+
+| Key (in `Config.Framework`) | Read as | Accepted values | Default |
+|---|---|---|---|
+| `Database.Type` | the database slot | `AUTO`, `oxmysql`, `mysql-connector`, `ghmattimysql`, `mongodb` | `AUTO` |
+| `Inventory` | the `inventoryProvider` slot | `ox_inventory`, `qb-inventory`, `qs-inventory`, `codem-inventory` | `ox_inventory` |
+| `Target.Type` | the `target` slot | `ox_target`, `qb-target` | `ox_target` |
+
+### `AUTO` and `NONE` mean "no opinion", and that is load-bearing
+
+Both are **answers, not rival resource names**, and treating either as a rival is
+what stopped a stock install from registering anything at all:
+
+- `AUTO` is the default for `Database.Type`. It means "work it out from what is
+  started", which is exactly what the presence path did anyway. Reading it as a
+  name made every database adapter compare itself against the string `AUTO`,
+  find a mismatch, and refuse — on a server where `oxmysql` was running, with
+  nothing wrong anywhere.
+- `NONE` is what the config summary reports for a slot nobody configured. Same
+  shape of mistake, from the other direction.
+
+A **configured name that is not running** is a different answer from both, and it
+is reported as `OTHER`: the operator asked for something and did not get it.
+
+### `Security.AuthorizedResources` is also yours to set
+
+Since cis_libs 2.2.0, an **empty** allow-list refuses every resource. That
+includes this one, on all four slots, until it is named:
+
+```lua
+Security.AuthorizedResources = { 'cis_core', 'cis_bridge' }
+```
+
+The boot report calls this `NO AUTH` and prints the line to add. It is the single
+most common first-boot problem and it has a one-line fix that the report prints
+for you.
+
+### What this resource does NOT read
+
+- No webhook URLs. Those belong to cis_libs, and it does not re-export them —
+  a URL printed into another resource's console is how a secret ends up in a
+  support ticket. The consequence is that the Discord adapter has **no cosmetics**
+  to render, and an embed with an empty `footer` is a 400. See §3.4.
+- No database credentials, no connection strings, no ACE groups.
+- No operator feature switches. The only thing that gates outbound logging is
+  cis_libs's own `Config.Printing.UseDiscordLogs`, checked before the capability
+  is ever called.
 
 ---
 

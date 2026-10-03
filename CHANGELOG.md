@@ -220,6 +220,19 @@ boundary.
   explain that `Cis.target` is a client surface. A rule that matches prose grows
   an exemption list until nobody trusts it.
 
+- **`test/live/RUNBOOK.md`**, tracked as project documentation. Everything else
+  in this repository runs without a game; this is what is left, and it is short
+  on purpose — a runbook nobody finishes is worse than none, because the person
+  who needs it is already out of time. It exists because an answer that lives in
+  one person's head stops existing when they stop working here.
+
+- **§6.5 of DOCUMENTATION.md: the configuration this resource reads.** It has no
+  config file of its own — two files describing one server is two places to be
+  wrong, and the disagreement is invisible until an adapter silently refuses to
+  register — so the three keys it honours are written down, with the values that
+  mean "no opinion" and the one setting (`Security.AuthorizedResources`) that a
+  stock install gets wrong.
+
 - **`API.md`, generated.** Every export with its signature, realm, stability and
   the file that declares it, written from `api.lua` and from a scan of what the
   resource actually registers. `npm run docs:check` is in `npm run test:all`, so

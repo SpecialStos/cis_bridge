@@ -8,7 +8,7 @@
 -- The four lines matter more than they look:
 --
 --   1. Is the resource started? An adapter that registers against a target
---      that is not there is an adapter whose every call raises.
+--           that is not there is an adapter whose every call raises.
 --   2. Does the configured name match? A server with ox_target installed but
 --      configured for qb-target should use neither, and should be told so --
 --      "the target you configured is not installed" is a different problem
@@ -20,11 +20,120 @@
 
 Bridge = {}
 
+--- How long an adapter waits for its target to START, in milliseconds.
+---
+--- Not a preference. `ensure cis_bridge` above `ensure ox_target` is an
+--- extremely common server.cfg, and an adapter that checks once and gives up
+--- does not register for the lifetime of the process -- so the platform works
+--- on the machine where the author tested it and silently has no target on half
+--- the servers that install it. Waiting is what makes start order irrelevant,
+--- which is the same property cis_libs builds for its own ready gate and
+--- capability waits.
+---
+--- Bounded, because an adapter that waited forever would report nothing at all
+--- on a server where the target genuinely is not installed, and "this resource
+--- registered nothing" is the single most useful sentence a support thread gets.
+Bridge.WAIT_MS = 60000
+
+--- How often to re-check while waiting. 500ms is fast enough that a target
+--- which takes two seconds to come up feels instant, and slow enough that ten
+--- adapters waiting together cost twenty wakeups a second for that window.
+Bridge.POLL_MS = 500
+
 local registered = {}
+local outcomes = {}
+
+--- The fix for an operator, named per slot.
+---
+--- Kept here, above every function that uses it, rather than below: a `local
+--- function` declared after its caller is not in that caller's scope at all, so
+--- `register` would be reading a GLOBAL named `fixFor`, find nil, and the one
+--- path that exists to turn a refusal into an instruction would raise instead --
+--- turning "here is how to fix it" into a stack trace on exactly the servers
+--- that need the instruction.
+---
+--- This is part of the DECISION, not of the report. An adapter that does not
+--- register is not a bug, and the sentence that explains it is part of the
+--- product. "Not registered" with no next step is a support ticket.
+local FIXES = {
+    target = 'install and start ox_target or qb-target, or set Framework.Target.Type to the '
+        .. 'one you use in your config file',
+    database = 'install and start oxmysql, mysql-connector, ghmattimysql or mongodb, and set '
+        .. 'Framework.Database.Type to it (AUTO picks whatever is started)',
+    inventory = 'install and start ox_inventory, qb-inventory, qs-inventory or '
+        .. 'codem-inventory, and set Framework.Inventory to the one you use',
+    discord = 'this adapter needs no third-party resource; it registers on its own',
+}
+
+--- The next step for a slot that did not register, or nil when there is none to
+--- suggest. `wanted` is the name the configuration asked for, when it asked for
+--- something other than what is running.
+local function fixFor(slot, wanted)
+    if wanted and type(wanted) == 'string' and wanted ~= '' then
+        return ('the server is configured for %q. Start %s, or change the configuration '
+            .. 'to the one you use'):format(tostring(wanted), tostring(wanted))
+    end
+    return FIXES[slot]
+end
+
+--- Every adapter that has ATTEMPTED to register, in a fixed order, so the boot
+--- report prints the same lines in the same sequence on every server. A report
+--- whose order depends on which thread happened to win is a report that cannot
+--- be diffed between two runs.
+Bridge.SLOTS = {
+    { slot = 'target', label = 'target' },
+    { slot = 'database', label = 'database' },
+    { slot = 'inventoryProvider', label = 'inventory' },
+    { slot = 'discord', label = 'discord' },
+}
 
 --- Is a third-party resource actually running?
 function Bridge.started(name)
     return GetResourceState(name) == 'started'
+end
+
+--- Wait for a resource to reach 'started', or for the wait to run out.
+---
+--- 'missing' answers immediately and without waiting: FiveM reports 'missing'
+--- for a resource that is not installed AT ALL, and no amount of waiting will
+--- change that. Waiting on it would hold the adapter silent for a minute to
+--- report something it already knew, which is the difference between a boot
+--- that explains itself and a boot that looks hung.
+---
+--- 'stopped' is different. It means installed and currently down, which is
+--- exactly what a resource that starts after us looks like from here.
+local function waitForTarget(name, timeoutMs)
+    local deadline = GetGameTimer() + (timeoutMs or Bridge.WAIT_MS)
+    while true do
+        local state = GetResourceState(name)
+        if state == 'started' then
+            return true, state
+        end
+        if state == 'missing' then
+            return false, state
+        end
+        if GetGameTimer() >= deadline then
+            return false, state
+        end
+        Wait(Bridge.POLL_MS)
+    end
+end
+
+--- Record why a slot did or did not end up registered.
+---
+--- The boot report is a pure function of this table, which is what makes it
+--- possible for the report to say "you configured qb-target and started
+--- ox_target" instead of "not registered". Recomputing that from a second pass
+--- over the same conditions would be a second implementation of the same rules,
+--- and the two would drift.
+local function record(slot, entry)
+    outcomes[slot] = entry
+end
+
+--- What every adapter's registration attempt came to. For the boot report and
+--- for `GetBridgeReport()`; the conformance runner uses `registered()`.
+function Bridge.outcomes()
+    return outcomes
 end
 
 --- Register this resource as the provider for a capability.
@@ -68,16 +177,50 @@ function Bridge.register(slot, target, configured, probeExport, exportName)
     if configured == 'NONE' or configured == 'none' then
         configured = nil
     end
+
+    -- The configuration is checked BEFORE the wait, because it costs nothing
+    -- and answering it first means a server configured for a resource it does
+    -- not have is told so at once rather than after a minute of silence.
     if configured and configured ~= '' and configured ~= target then
-        print(('[cis_bridge] %s: not registered, the configuration names %q')
-            :format(slot, tostring(configured)))
+        local message = ('the configuration names %q'):format(tostring(configured))
+        print(('[cis_bridge] %s: not registered, %s'):format(slot, message))
+        record(slot, {
+            slot = slot, target = target, ok = false,
+            reason = 'configured_elsewhere', detail = message, fix = fixFor(slot, configured),
+        })
         return false
     end
-    if not Bridge.started(target) then
-        print(('[cis_bridge] %s: %s is not started; %s is not registered')
-            :format(slot, target, slot))
+
+    local started, state = waitForTarget(target)
+    if not started then
+        local message, detail, fix
+        if state == 'missing' then
+            message = ('%s is not installed'):format(target)
+            detail = ('%s reports "missing", which means it is not on this server at all'):format(target)
+            -- `nil` for the configured name, deliberately. The two branches of
+            -- `fixFor` ask different questions -- "the configuration names X, so
+            -- start X" and "here is the resource to start" -- and a resource that
+            -- is absent is the second question. Passing `target` here answered
+            -- the first with a resource nobody configured, so the fix told an
+            -- operator to go and start the very thing that is not installed.
+            fix = fixFor(slot)
+        else
+            message = ('%s is %s and did not start within %dms')
+                :format(target, tostring(state), Bridge.WAIT_MS)
+            detail = ('%s reports %q; it was waited on for %dms')
+                :format(target, tostring(state), Bridge.WAIT_MS)
+            fix = ('check the start order in server.cfg: put `ensure %s` BEFORE `ensure cis_bridge`')
+                :format(target)
+        end
+        print(('[cis_bridge] %s: not registered, %s'):format(slot, message))
+        record(slot, {
+            slot = slot, target = target, ok = false,
+            reason = (state == 'missing') and 'not_installed' or 'not_started',
+            detail = message, fix = fix,
+        })
         return false
     end
+
     if probeExport ~= nil and probeExport ~= '' then
         local required = type(probeExport) == 'table' and probeExport or { probeExport }
         local missing = {}
@@ -108,11 +251,20 @@ function Bridge.register(slot, target, configured, probeExport, exportName)
             end
         end
         if #missing > 0 then
-            print(('[cis_bridge] %s: %s is started but exposes no %s export; not registered')
-                :format(slot, target, table.concat(missing, ' or ')))
+            local message = ('%s is started but exposes no %s export')
+                :format(target, table.concat(missing, ' or '))
+            print(('[cis_bridge] %s: not registered, %s'):format(slot, message))
+            record(slot, {
+                slot = slot, target = target, ok = false,
+                reason = 'missing_export', detail = message,
+                fix = ('this build of %s does not export %s. Update it, or install a build '
+                    .. 'that does; the adapter refuses to register because every call would raise')
+                    :format(target, table.concat(missing, ' or ')),
+            })
             return false
         end
     end
+
     if type(exportName) ~= 'string' or exportName == '' then
         error(('Bridge.register(%s) needs the export name of the calling adapter'):format(slot), 2)
     end
@@ -120,10 +272,17 @@ function Bridge.register(slot, target, configured, probeExport, exportName)
     local ok, why = exports['cis_libs']:RegisterCapability(slot, provider)
     if not ok then
         print(('[cis_bridge] %s: registration REFUSED -- %s'):format(slot, tostring(why)))
+        record(slot, {
+            slot = slot, target = target, ok = false,
+            reason = 'refused', detail = tostring(why),
+            fix = 'another resource already holds this capability. Only one resource may '
+                .. 'provide each slot; stop the other one',
+        })
         return false
     end
     registered[slot] = target
     print(('[cis_bridge] %s: %s registered'):format(slot, target))
+    record(slot, { slot = slot, target = target, ok = true })
     return true
 end
 

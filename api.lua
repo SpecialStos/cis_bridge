@@ -20,7 +20,7 @@
 
 return {
     name = 'cis_bridge',
-    version = '1.0.0',
+    version = '1.1.0',
     api = 1,
     schema = 0,
 
@@ -123,7 +123,15 @@ return {
         },
         GetConformanceResults = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
-            use = 'The last run, as an array of { target, name, ok, detail }. For a support thread',
+            use = 'The last run, as an array of { target, name, ok, skipped, detail }. For a support thread',
+            realm = 'server',
+            signature = '()',
+        },
+        -- Added 1.1.0. The boot report, as data rather than as printed lines.
+        GetBridgeReport = {
+            since = '1.1.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'One row per adapter slot: { slot, label, target, detail, fix }. '
+                .. 'The same content the boot printout shows, so another resource can render it',
             realm = 'server',
             signature = '()',
         },

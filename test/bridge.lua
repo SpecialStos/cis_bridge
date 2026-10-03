@@ -36,8 +36,22 @@ exports = {
 }
 
 local started = {}
-GetResourceState = function(name) return started[name] or 'stopped' end
+-- 'missing' for a resource that was never put on this server, which is what
+-- FiveM reports and what `Bridge.register` treats as an immediate answer. The
+-- alternative -- 'stopped' for everything unknown -- made every not-installed
+-- case look like a start-order problem, so the two paths could not be told
+-- apart and neither could be tested.
+GetResourceState = function(name) return started[name] or 'missing' end
 GetCurrentResourceName = function() return 'cis_bridge' end
+
+-- A clock the test drives, because `Bridge.register` waits for a target to
+-- START and a real timer would make that wait either instant -- hiding the
+-- timeout path entirely -- or genuinely sixty seconds, which is a test nobody
+-- runs. `Wait` advances the same clock, so the loop terminates deterministically
+-- and the assertion is about the DECISION rather than about elapsed time.
+local clock = 0
+GetGameTimer = function() return clock end
+Wait = function(ms) clock = clock + (tonumber(ms) or 0) end
 
 -- A started target whose probe export EXISTS, and one where it does not.
 --
@@ -180,6 +194,100 @@ registerShouldFail = false
 -- is why the name is required rather than derived from the slot.
 local named = pcall(Bridge.register, 'target', 'ox_target', nil, nil, nil)
 check(not named, 'registering without an export name is refused loudly')
+
+-- ================================================ 5b. START ORDER IS NOT THE OPERATOR'S JOB
+--
+-- `ensure cis_bridge` above `ensure ox_target` is an extremely common server.cfg,
+-- and an adapter that checks once and gives up does not register for the lifetime
+-- of the process. So the platform works on the machine the author tested it on
+-- and silently has no target on half the servers that install it -- a bug that
+-- cannot be reproduced on the machine that wrote it, which is the worst kind to
+-- own.
+--
+-- `missing` is answered immediately and `stopped` is waited on, because FiveM
+-- uses them for different situations: 'missing' means the resource is not on
+-- this server at all and no amount of waiting will change it, while 'stopped' is
+-- exactly what a resource that starts after us looks like from in here.
+local clockBefore = clock
+started.late = 'stopped'
+local polls = 0
+local realState = GetResourceState
+GetResourceState = function(name)
+    if name ~= 'late' then
+        return realState(name)
+    end
+    polls = polls + 1
+    -- Installed, slow, and it comes up on the fourth look.
+    return polls >= 4 and 'started' or 'starting'
+end
+started.late = 'stopped'
+exports.late = { a = function() end }
+check(Bridge.register('target', 'late', nil, 'a', 'LATE') == true,
+    'a target that starts after us is waited for, not given up on')
+check(registeredWith.target == 'cis_bridge:LATE', 'and registers once it is up')
+check(clock > clockBefore, 'and the wait consumed time rather than answering immediately')
+GetResourceState = realState
+
+-- The outcome of a late registration is still 'registered', so the boot report
+-- does not tell an operator their target failed because cis_bridge was listed
+-- first.
+local lateOutcome = Bridge.outcomes().target
+check(lateOutcome ~= nil and lateOutcome.ok == true,
+    'a target that arrived late still reports as registered, not as a failure')
+
+-- A target that is genuinely not installed is answered AT ONCE, because waiting
+-- on it would report something the resource already knew after a minute of
+-- silence. That minute is the difference between a boot that explains itself and
+-- a boot that looks hung.
+clock = 0
+started.nothing_here = nil
+GetResourceState = realState
+check(Bridge.register('target', 'nothing_here_2', nil, nil, 'X') == false,
+    'a resource that is not installed does not register')
+check(clock < Bridge.WAIT_MS,
+    'and is answered immediately rather than waited on for the full window')
+
+-- The refusal has to name the fix, because "not registered" on its own is the
+-- ticket this whole file exists to remove.
+local missingOutcome = Bridge.outcomes().target
+check(missingOutcome ~= nil and missingOutcome.reason == 'not_installed',
+    'the outcome records WHY a slot did not register')
+check(type(missingOutcome.fix) == 'string' and #missingOutcome.fix > 0,
+    'and carries the next step for the operator')
+
+-- A configured-away slot says so, and says what to do about it, rather than
+-- reporting "not installed" for a resource the operator never intended to use.
+registeredWith = {}
+Bridge.outcomes().database = nil
+check(Bridge.register('database', 'oxmysql', 'mysql-connector', 'query', 'X') == false,
+    'a slot configured for another resource does not register')
+local elsewhere = Bridge.outcomes().database
+check(elsewhere ~= nil and elsewhere.reason == 'configured_elsewhere',
+    'and the outcome distinguishes "configured elsewhere" from "not installed"')
+check(type(elsewhere.fix) == 'string' and elsewhere.fix:find('mysql%-connector') ~= nil,
+    'and the fix names the resource the operator actually configured')
+
+-- A target that is installed, started, and does not export what the adapter
+-- calls is a DIFFERENT problem again, and it is the one that produces a
+-- capability that raises on first use if the adapter registers anyway.
+started.wrong_api = 'started'
+exports.wrong_api = { SomethingElse = function() end }
+check(Bridge.register('target', 'wrong_api', nil, 'addSphereZone', 'X') == false,
+    'a started target with the wrong exports does not register')
+local wrongApi = Bridge.outcomes().target
+check(wrongApi ~= nil and wrongApi.reason == 'missing_export',
+    'and the outcome says the API is wrong rather than that the target is absent')
+check(type(wrongApi.fix) == 'string' and wrongApi.fix:find('addSphereZone') ~= nil,
+    'and the fix names the missing export')
+
+-- Section 6 asserts what the registered map finally holds, so the state these
+-- cases left behind is put back. Five of them wrote to the `target` slot, and
+-- leaving `wrong_api` there would make the next section describe a resource
+-- that was never part of it.
+started.probe_ok = 'started'
+exports.probe_ok = { addSphereZone = function() end }
+Bridge.register('target', 'probe_ok', nil, 'addSphereZone', 'X')
+Bridge.register('database', 'oxmysql', nil, 'query', 'Y')
 
 -- ============================================ 6. what registered is knowable
 -- "cis_bridge is installed but registered nothing" and "cis_bridge is not

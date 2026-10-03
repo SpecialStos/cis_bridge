@@ -706,5 +706,19 @@ RegisterCommand('cis_bridge', function(src, args)
         print('    add_ace group.admin command.cis_bridge allow')
         return
     end
-    Conformance.run(args and args[1] or nil)
+    local first = args and args[1]
+    -- `report` and `test` are different questions and were not separable before
+    -- because there was only one of them. `report` says what is wired up;
+    -- `test` says whether it works. A support thread usually wants the first and
+    -- an operator debugging an integration wants the second, and being handed
+    -- the wrong one costs a round trip either way.
+    if first == 'report' then
+        if Report and Report.render then
+            Report.render()
+        else
+            print('cis_bridge: the report module is not loaded')
+        end
+        return
+    end
+    Conformance.run(first)
 end, true)

@@ -45,6 +45,15 @@ local registrations = {}
 local configSummary = {}
 local registerFails = false
 
+-- A clock the suite drives. `Bridge.register` waits for a target to start, so
+-- without this every adapter load either waits out the real window -- sixty
+-- seconds per non-started target -- or, if `GetGameTimer` is missing entirely,
+-- raises inside the registration helper and takes the whole suite down with a
+-- message that reads like a product bug rather than a missing stub.
+local clock = 0
+_G.GetGameTimer = function() return clock end
+_G.Wait = function(ms) clock = clock + (tonumber(ms) or 0) end
+
 -- Whatever an adapter hands a third party is asserted on directly, by having
 -- the fake record the exact table it was given. This is the whole technique:
 -- the interesting question is almost never "what did it answer", it is "what

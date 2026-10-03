@@ -47,7 +47,7 @@ game 'gta5'
 name "Cisoko - Bridge - Integrator SDK"
 description "One adapter and one conformance test per third-party target."
 author "Cisoko"
-version "1.0.0"
+version "1.1.0"
 lua54 'yes'
 
 dependencies {
@@ -91,5 +91,9 @@ server_scripts {
     'adapters/inventory/qs_inventory.lua',
     'adapters/inventory/codem_inventory.lua',
     'adapters/discord/webhooks.lua',
+    -- After the adapters, so `Report` exists by the time a console command can
+    -- reach it. The boot thread inside it waits for the slowest adapter anyway,
+    -- so this ordering is about the command, not about the report.
+    'server/report.lua',
     'server/conformance.lua',
 }

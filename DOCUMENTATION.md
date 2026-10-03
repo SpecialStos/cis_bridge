@@ -1,6 +1,6 @@
 # cis_bridge — documentation
 
-**Version 1.0.0.** One adapter, and one conformance test, per third-party
+**Version 1.1.0.** One adapter, and one conformance test, per third-party
 target.
 
 ---
@@ -19,12 +19,12 @@ nothing outside this resource knows any of their names.
 
 An adapter's whole job is: **check that my target is running, and if it is,
 register myself as the capability.** That is small, which is why every adapter
-uses the shared helper rather than hand-rolling it — and why the helper's four
+uses the shared helper rather than hand-rolling it — and why the helper's
 conditions are tested.
 
 If you are integrating this, §2 (the registration rules) and §3 (the adapter
 contracts) are what you need. §4 is the part that will save you a support
-thread.
+thread, and §5 is the boot report, which exists for the same reason.
 
 ---
 
@@ -54,7 +54,13 @@ ensure cis_core
 ensure cis_bridge
 ```
 
-### 2.1 The four conditions
+**Start order does not matter.** An adapter waits up to 60 seconds for its
+target to start, so `ensure cis_bridge` above `ensure ox_target` is fine. This
+was not true in 1.0.0: the adapter checked once, gave up, and never registered
+for the lifetime of the process — so the platform worked on the machine the
+author tested it on and had no target on half the servers that installed it.
+
+### 2.1 The conditions
 
 Every adapter calls the same helper, and each condition has a real failure
 behind it:
@@ -65,14 +71,22 @@ Bridge.register(slot, target, configured, probeExport, exportName)
 
 | # | Condition | The failure it prevents |
 |---|---|---|
-| 1 | `GetResourceState(target) == 'started'` | An adapter registering against a target nobody has, raising on every call, in a product that looks installed. |
-| 2 | `configured` matches `target`, or is unset | A server with `ox_target` installed and `qb-target` configured would register the one that is present — working by accident on a server where the operator never tested the other one. |
-| 3 | `exports[target][probeExport]` exists | Calling a missing export **raises**. Older `oxmysql` has no `single`; a renamed export is the same problem. Registering anyway means the capability exists and every call to it raises. |
+| 1 | `configured` matches `target`, or is unset, or is `AUTO` / `NONE` | A server with `ox_target` installed and `qb-target` configured registering the one that is present — working by accident on a server where the operator never tested the other one. `AUTO` and `NONE` are *answers*, not rival names: `AUTO` means "work it out from what is started" and `NONE` is what the config summary reports for a slot nobody configured. Reading either as a resource name made every adapter refuse on a stock server. |
+| 2 | `target` reaches `started`, within 60s | Registering against a target nobody has, or against one that is still starting, and then raising on every call in a product that looks installed. |
+| 3 | **every** export in `probeExport` exists | Calling a missing export **raises**. One export is not enough to establish compatibility — an adapter that calls six of a target's exports has six ways to be wrong. Every missing name is named in the refusal. |
 | 4 | `RegisterCapability` was not refused | A bridge registering twice on a partial restart silently replacing a working provider. |
 
-Each refusal prints **one line saying which condition failed** and by what
-name. `SKIP` and `FAIL` are different sentences and an operator needs to be told
-which one they have.
+`probeExport` takes a single name or a list. The list form exists because of
+condition 3.
+
+The configuration is checked **before** the wait, because it costs nothing and
+answering it first means a server configured for a resource it does not have is
+told so at once rather than after a minute of silence.
+
+`missing` is answered immediately and `stopped` is waited on, because FiveM uses
+them for different situations: `missing` means the resource is not on the server
+at all and no amount of waiting changes that; `stopped` is exactly what a
+resource that starts after us looks like from in here.
 
 ### 2.2 One export name per adapter, not one per slot
 
@@ -93,6 +107,13 @@ Inherited from `cis_libs`. Two products both believing they own the database is
 a real failure and it is invisible until something is mysteriously not taking
 effect. The attempt is refused and the holder is named.
 
+### 2.4 Publishing the adapter
+
+After a successful registration the adapter calls `Bridge.publish(slot, methods)`
+with its own method table. That is what lets the conformance suite test **this
+resource's code** rather than whatever capability happens to be answering — see
+§4.2, where getting this wrong made four healthy adapters report FAIL.
+
 ---
 
 ## §3 — The adapters
@@ -101,10 +122,10 @@ effect. The attempt is refused and the holder is named.
 
 Registered into `cis_libs` as the `target` capability.
 
-| Export | Target | Registered when |
+| Export | Target | Required exports |
 |---|---|---|
-| `CisBridgeTargetOx` | `ox_target` | started, configured `ox_target`, exposes `addSphereZone` |
-| `CisBridgeTargetQb` | `qb-target` | started, configured `qb-target`, exposes `AddBoxZone` |
+| `CisBridgeTargetOx` | `ox_target` | `addSphereZone`, `addBoxZone`, `removeZone`, `addLocalEntity`, `removeLocalEntity` |
+| `CisBridgeTargetQb` | `qb-target` | `AddBoxZone`, `AddCircleZone`, `RemoveZone`, `AddTargetEntity`, `RemoveTargetEntity` |
 
 ```lua
 Adapter.create(spec)   --> ok, reason
@@ -139,7 +160,7 @@ inventory service in `cis_core`.
 | `CisBridgeInventoryOx` | `ox_inventory` | GPL-3.0, isolated to this one file |
 | `CisBridgeInventoryQb` | `qb-inventory` | Takes **no** metadata (4th arg is a slot flag); reports failure as a **string** — which is truthy in Lua, so every call coerces explicitly |
 | `CisBridgeInventoryQs` | `qs-inventory` | `GetItemTotal` rather than a count export |
-| `CisBridgeInventoryCodem` | `codem-inventory` | The only one with **no boolean** in its contract: `HasItem`/`AddItem` answer counts and `nil` |
+| `CisBridgeInventoryCodem` | `codem-inventory` | The only one with **no boolean** in its contract: `AddItem` answers counts and `nil` |
 
 **None of these is registered on the client.** The client gets its counts from a
 snapshot the server pushes. A client-side provider would be a second source of
@@ -149,6 +170,25 @@ Two hops on purpose: the service in `cis_core` is the `name -> amount`
 normalisation every consumer depends on, and the provider here is the
 third-party call underneath it. Either can be replaced alone.
 
+#### `count` is `GetItemCount`, not `Search`
+
+Both ox_inventory exports answer the question, and they answer **differently**:
+
+| | item the player does not have | inventory that does not exist yet |
+|---|---|---|
+| `GetItemCount(inv, item)` | `0` | `0` |
+| `Search(inv, 'count', item)` | `0` | `false` |
+
+A caller asking "does this player hold three of X" gets `0` from one and `nil`
+from the other, and `nil` reads as "I could not tell" — so on the `Search` path
+a player who has not finished spawning looks like an inventory outage. The slot
+contract promises a number, so the adapter uses the export that returns a number.
+
+On a build too old for `GetItemCount`, the adapter falls back to `Search` and
+keeps `false` as `nil` rather than collapsing it to zero, because zero means
+"they have none" and `nil` means "unknown" — and that reading gates every dupe
+check in the platform.
+
 ### 3.3 Databases (server)
 
 Registered into `cis_libs` as the `database` capability. All are **await-style**:
@@ -157,7 +197,7 @@ they yield and answer `nil` at their deadline.
 | Export | Target | Notes |
 |---|---|---|
 | `CisBridgeDatabaseOxmysql` | `oxmysql` | **The only one that supports `Cis.db.transaction`** |
-| `CisBridgeDatabaseMysqlConnector` | `mysql-connector`, `mysql-async` | Callback-first, bridged to await |
+| `CisBridgeDatabaseMysqlConnector` | `mysql-connector` | Callback-first, bridged to await. **Not** `mysql-async` — see below |
 | `CisBridgeDatabaseGhmatti` | `ghmattimysql` | Deprecated upstream; kept so installing the bridge does not break the last server still running it |
 | `CisBridgeDatabaseMongodb` | `mongodb` | **Registers in order to say it is unsupported** |
 
@@ -172,6 +212,41 @@ Adapter.ready()             --> boolean
 Adapter.name()              --> string
 ```
 
+#### Transactions, and the bind key they silently dropped
+
+This is the most consequential thing this resource does, and it is worth
+reading twice before writing a consumer against it.
+
+`cis_libs` documents a transaction entry as `{ query = sql, params = { ... } }`,
+and that is the shape every consumer on this platform writes, because it is the
+shape the contract tells them to write.
+
+oxmysql's own type is:
+
+```ts
+type TransactionQuery = { query: string | string[]; parameters?: CFXParameters; values?: CFXParameters }
+```
+
+There is **no `params`**. Its parser reads `query.parameters or query.values`
+and, finding neither, falls back to the transaction's *outer* parameter array.
+
+So an entry written to the documented contract is not rejected. It is **ignored**.
+Every `?` in that statement goes unbound, and there is nothing to notice: the
+transaction commits and reports success. A migration written as `WHERE id = ?`
+with `params = { id }` writes whichever row the unbound bind resolves to, or
+fails at the driver, and both look like somebody else's bug for weeks.
+
+The adapter normalises every accepted spelling — `values`, `parameters` and
+`params` — into `values`, in oxmysql's own precedence order, so a caller who set
+more than one gets the same answer here as it would have got there. The `[sql,
+binds]` array form is passed through untouched, because rewriting it would
+destroy an object used for named placeholders.
+
+A malformed entry is **refused before the driver opens a transaction**, naming
+the index. oxmysql opens the transaction and only then walks the array, so
+leaving it to the driver means discovering a bad entry at position 7 after the
+connection has committed to six statements.
+
 #### The oxmysql `single` fallback
 
 `oxmysql` grew a `single` export. Builds before it do not have one, and calling
@@ -181,6 +256,15 @@ on every `Cis.db.single` call, from a resource that looks like it supports it.
 The adapter **probes at registration** and falls back to the first row of a
 query. Both halves matter: probing without the fallback registers an adapter
 that cannot serve a method it advertised.
+
+The probe captures the **value**, not merely the absence of an error. Indexing a
+missing export in FiveM yields `nil` rather than raising, so a bare `pcall`
+around the index records "yes, supported" for every build ever seen.
+
+`single` and `transaction` are deliberately **not** in the required-exports list.
+Both are probed and answered below — one has a fallback, the other a refusal —
+and requiring them would refuse registration on the old installs the fallback
+was written for.
 
 #### Why the callback bridge has a deadline
 
@@ -204,6 +288,17 @@ lock for 15 seconds in order to be told no is worse than an error. And running
 the statements one at a time and reporting success — the alternative — turns a
 half-applied write into a successful-looking one.
 
+#### `mysql-async` is not supported, and the name was wrong
+
+`mysql-async` exports `mysql_fetch_all`, `mysql_fetch_scalar` and
+`mysql_execute`. This adapter calls `mysql_query`, `mysql_scalar`, `mysql_insert`
+and `mysql_update`, which are mysql-connector's. Pointed at a mysql-async server
+it would register — the resource is started, and the probe export is not the one
+that would have caught this — and then raise on the first query.
+
+Naming it accurately is the difference between "not supported" and "supported,
+and broken".
+
 #### Why mongodb registers at all
 
 The capability contract is SQL-shaped and MongoDB is not. Rather than pretend,
@@ -220,26 +315,65 @@ than no adapter at all.
 which is why it is a file here rather than a function in a library.
 
 ```lua
-Adapter.Log(webhookUrl, title, message, color, ping)
-Adapter.QueueDepth()  --> depth, dropped
+Adapter.log(webhookUrl, title, message, color, ping)  --> accepted
+Adapter.depth()                                        --> depth, dropped
 ```
+
+The method names are the **slot's** names, lower case, because that is what
+`CisRegistry.call('discord', 'log', ...)` passes.
 
 Bounded, rate-limited, and it never blocks the caller: a slow or dead webhook
 drops entries rather than growing without limit.
 
-**`QueueDepth` returns depth *and* cumulative drops.** Depth alone looks healthy
-on a server that has been quietly truncating for an hour.
+**`depth` returns depth *and* cumulative drops.** Depth alone looks healthy on a
+server that has been quietly truncating for an hour.
 
-Registering is not sending. A server with this installed and
-`Config.Printing.UseDiscordLogs = false` has a queue that never fills.
+Registering is not sending. `cis_libs` checks `Config.Printing.UseDiscordLogs`
+*before* it ever reaches the capability, so being asked to log **is** the switch.
+What is left to decide here is whether the URL is real, and a stock config ships
+placeholder URLs — those are discarded silently, because posting to one would
+send every log line the server produces to whoever owns the placeholder domain.
+
+#### The embed, and why it was a 400 on every message
+
+The embed used to be built like this:
+
+```lua
+thumbnail = cfg.Thumbnail and { url = cfg.Thumbnail } or nil,
+footer    = { text = cfg.FooterText, icon_url = cfg.FooterIcon },
+```
+
+`cfg` was **always empty**. It was read first as a `DiscordConfig` global, which
+lives in cis_core's Lua state and is therefore always `nil` here; then, after
+that was fixed, through cis_libs' `GetDiscordConfig`, which hands a foreign
+caller an empty table **by design** — it will not re-export webhook
+configuration across a resource boundary, because a URL printed into another
+resource's console is how a secret ends up in a support ticket.
+
+Either way the footer object was built with both fields `nil`, `json.encode`
+dropped both keys, and the payload carried `"footer":{}`. Discord validates
+embeds and **rejects one whose `footer` carries neither text nor an icon**, with
+a 400 for the whole request.
+
+So every message this platform has ever sent to Discord was a 400. The adapter
+counted that as an unhappy endpoint, backed off to sixty seconds, and the
+operator saw a webhook that "stopped working some time ago" and no error naming
+the cause.
+
+The rule is now: **omit an optional section entirely rather than include it
+empty**, and the builder lives in `adapters/discord/embed.lua` so it can be
+loaded and tested without the engine. There are no cosmetics, because cis_libs
+will not re-export them and there is nothing truthful to put in one. An operator
+who wants a footer has exactly one function to edit.
 
 ---
 
 ## §4 — Conformance
 
 ```
-cis_bridge                # everything
+cis_bridge              # everything
 cis_bridge test database  # one target
+cis_bridge report       # what is wired up, and what to do about it
 ```
 
 ### 4.1 Why
@@ -256,62 +390,168 @@ Each was a real incident and each was invisible until somebody's server broke.
 An adapter that ships without a test is an adapter whose next upstream release
 is a production incident.
 
-### 4.2 What a test checks
+### 4.2 What a test is pointed at, which is the whole design
+
+**At this resource's own adapter. Never at a capability that happens to be
+answering.**
+
+The inventory tests used to call `Cis.inventory.count`, which cis_libs routes to
+the `inventory` slot — the service **cis_core** owns — while cis_bridge fills the
+`inventoryProvider` slot underneath it. So the suite was testing somebody else's
+code: on a server running cis_bridge without cis_core it reported four broken
+inventory adapters on a perfectly healthy install, and on a server with both it
+proved nothing about the adapters that are this resource's responsibility.
+
+Every test now reaches the adapter through `Bridge.adapterFor(slot)`. The only
+`Cis.*` call left in the suite is the database one, where the abstraction is
+genuinely part of what the adapter has to be correct about: cis_libs calls it,
+not the adapter directly, and an adapter that serves a direct call and not a
+routed one is broken for every consumer on the platform.
+
+### 4.3 The check every adapter gets
+
+`GetCapabilities()` asks cis_libs to work out which methods the registered
+provider **cannot serve**. An empty `missing` is cis_libs saying "the thing you
+registered answers everything I might call on it" — the exact class of bug this
+suite exists to find, checked for free, and checked the same way for all eleven
+adapters rather than eleven times over in eleven slightly different ways.
+
+It has also caught the specific defect a per-adapter check cannot: a provider
+whose method table answers `Log` where the dispatcher sends `log`.
+
+### 4.4 What a test checks
 
 **The contract, not the implementation.** "Does `addSphereZone` exist" is worth
 knowing and is not what breaks. What breaks is: *does a zone I create come back
 when I ask whether it exists, and does removing one answer rather than raise.*
 
-### 4.3 What a test does not do
+### 4.5 What a test does not do
 
 **Nothing is sent and nothing is written to a player.** The tests create and
 remove their own names, use obviously-synthetic ids, and touch no inventory — a
 conformance test that gives a player an item to see whether the inventory works
 is a test that can leave a player with an item.
 
-The one exception is the `oxmysql` test, which creates and drops a table with a
+The one exception is the database test, which creates and drops a table with a
 conformance prefix. A test that leaves a table on a customer's database is
-litter.
+litter. It then asks `information_schema` whether the table is gone rather than
+assuming the `DROP` worked — and reports `SKIP` rather than `FAIL` if the
+database user cannot read `information_schema`, because that has told us nothing
+about the adapter.
 
-### 4.4 `SKIP` is not `FAIL`
+The Discord test sends nothing at all, which is a real constraint rather than a
+stylistic one. Enqueuing a genuine webhook URL would eventually be posted by the
+drain loop, so the only URL it touches is the `CHANGE-ME` placeholder — and the
+property under test is precisely that the adapter refuses it.
+
+### 4.6 `SKIP` is not `FAIL`
 
 A target that is not installed reports `SKIP`. A server without `qs-inventory` is
 not broken, and printing a `FAIL` line for it would bury the one result the
-operator came for under a wall of noise they have to read past.
+operator came for under a wall of noise they have to read past. The tally
+reports skipped checks separately so the operator knows how much of the run
+actually executed.
 
-The list of targets tested comes from **what actually registered**, not from a
-static list of everything this resource can adapt.
+### 4.7 The client half
 
-### 4.5 Programmatic access
+`Cis.target.*` is a **client** surface. On the server `Cis.target` is `nil` and
+every call raises "attempt to call field `add` (a nil value)", which is why the
+server marks those slots `SKIP` and asks every connected client to run its own
+half. It exists for one specific reason: a target resource can be started on the
+server and still be broken on a client. `ox_target` registers on both sides, and
+a client that cannot create a zone produces a door that does not respond — which
+looks exactly like a server-side permission problem and is not one.
+
+The server and client capability registries are **independent**, so a provider
+can pass the server's checks and fail the client's.
+
+A client answers with a table of results. An untrusted client can send anything,
+so the server prints and counts, never treats a client's `PASS` as proof of
+anything it did not check itself, and bounds the payload at 64 rows.
+
+It also runs on demand from the client console with `cis_bridge_client`.
+
+### 4.8 Programmatic access
 
 ```lua
 exports['cis_bridge']:RunConformance('oxmysql')   --> boolean
-exports['cis_bridge']:GetConformanceResults()     --> { { target, name, ok, detail }, ... }
+exports['cis_bridge']:GetConformanceResults()     --> { { target, name, ok, skipped, detail }, ... }
 ```
 
 The results are the answer to "is this a broken adapter or an incompatible
 target?", which is the first half of every support thread about a bridge.
 
-The **client** runs the same contract on the client, and it exists for one
-specific reason: a target resource can be started on the server and still be
-broken on a client. `ox_target` registers on both sides, and a client that
-cannot create a zone produces a door that does not respond — which looks exactly
-like a server-side permission problem and is not one.
-
-### 4.6 What each target is actually checked for
+### 4.9 What each target is actually checked for
 
 | Target | Checks |
 |---|---|
-| `ox_target` | creates a sphere, creates a box, reports a created zone as existing, removes without raising, forgets a removed zone, refuses an unknown name without being fatal |
-| `qb-target` | creates a circle, creates a box from a vector3, accepts an array size, removes |
-| `oxmysql` | query, single, scalar, insert, DDL, the inserted row is visible, **transaction succeeds**, cleans up after itself |
-| `mysql-connector` | query, single, scalar, **refuses a transaction**, and the refusal names `oxmysql` |
-| all four inventories | a missing item counts **zero, not nil** — the distinction a consumer's `if not count` depends on |
-| `mongodb` | **says it is not a SQL driver** |
+| `ox_target` (client) | serves the whole slot contract, names itself, creates a sphere, creates a box from a vector3 **and** from an array, creates a target on a **real spawned ped**, removes, forgets a removed zone, refuses an unknown name and an unknown zone type without being fatal |
+| `qb-target` (client) | the same set, through `qb-target`'s three-number box zone |
+| `oxmysql` | query, single, scalar, insert, DDL, the inserted row is visible, **a transaction binds the key the contract documents** and the row is actually there, refuses a malformed entry and names its index, refuses an empty transaction, drops the table, and asks the catalogue |
+| `mysql-connector` | query, single, scalar, routed through `Cis.db`, **refuses a transaction**, and the refusal names `oxmysql` |
+| `ghmattimysql` | query, scalar, **`update` returns a number of rows and not a result object**, refuses a transaction |
+| all four inventories | serves the slot contract, names itself, reports itself available, a missing item counts **zero not nil**, and a nil source or item is `nil` rather than zero |
+| `mongodb` | **says it is not a SQL driver**, explains why, and every method refuses rather than raising |
+| `discord` | answers `log` and `depth`, refuses a placeholder, nil, and empty webhook, **queues nothing** for any of them, and the queue is bounded with drops counted |
 
 ---
 
-## §5 — Extending
+## §5 — The boot report
+
+Printed once at boot, and on demand with `cis_bridge report`.
+
+Support is roughly seventy percent of this company's cost base. The cheapest
+thing that moves it is an answer that arrives without a ticket, so every row
+carries three things: the outcome, the sentence that explains it, and the next
+step.
+
+```
+  state    slot            target
+  -------  --------------  ---------------------------------------------
+  OK       target          ox_target         registered
+  OK       database        oxmysql           registered
+  DOWN     inventory       -                 qs-inventory is stopped and did not start within 60000ms
+  OK       discord         cis_bridge        registered
+
+  capabilities cis_libs can see:
+    database           cis_bridge
+    inventoryProvider  cis_bridge
+
+  3 of 4 adapter slot(s) registered.
+
+  what to do about the rows above:
+    inventory          check the start order in server.cfg: put `ensure qs-inventory` BEFORE `ensure cis_bridge`
+
+  Next: run `cis_bridge test` to exercise every adapter that registered.
+```
+
+Five refusals are told apart, because they are five different problems with five
+different fixes:
+
+| State | Means | The fix it names |
+|---|---|---|
+| `MISSING` | not on this server at all | the resources to install and start |
+| `DOWN` | installed, never came up | the start order in `server.cfg` |
+| `OTHER` | the configuration names a different resource | that resource, by name |
+| `NO API` | started, without the exports this adapter needs | the missing export, by name |
+| `REFUSED` | another resource already holds the slot | only one provider may hold a slot |
+
+`UNKNOWN` means the adapter never reached its registration call at all — usually
+`cis_libs` never becoming ready. It never claims a resource is absent, because it
+did not check.
+
+The report also asks cis_libs what **it** can see, which is how a provider that
+registered but cannot serve the methods a slot declares becomes visible: healthy
+from in here, raising on first real call.
+
+```lua
+exports['cis_bridge']:GetBridgeReport()
+--> { { slot, label, target, detail, fix }, ... }
+```
+
+---
+
+## §6 — Extending
 
 Adding a target is one file plus one test.
 
@@ -319,40 +559,23 @@ Adding a target is one file plus one test.
 2. Implement the slot's methods, matching the contract in §3 exactly.
 3. `exports('CisBridge<Slot><Target>', function() return Adapter end)` — **a
    unique name**.
-4. `CreateThread(function() if not exports['cis_libs']:WaitReady(15000) then return end; Bridge.register(...) end)`.
-5. Add an entry to `tests` in `server/conformance.lua`. A target with no test is
-   reported as a **failure**, not silently skipped — "no conformance test is
-   defined for it" is the finding.
+4. In a `CreateThread`: `WaitReady(15000)`, then `Bridge.register(...)`, then
+   `Bridge.publish(slot, Adapter)` on success.
+5. Add a case to the `tests` table in `server/conformance.lua`, keyed by **slot**.
+   The runner looks the test up by slot first and by target name second, because
+   the discord slot registers against this resource rather than a third party. A
+   slot with no test is reported as a **failure**, not silently skipped.
 6. Declare the export in `api.lua` or `npm run test:api` fails.
+7. Add it to `Bridge.SLOTS` in `shared/bridge.lua` so the boot report has a row.
 
 **Never vendor, never modify, never copy.** Read the target's source if you need
 to understand it; the one-file rule is the whole mitigation and copying breaks
 it silently.
 
----
-
-## §6 — Diagnostics
-
-```lua
-exports['cis_libs']:GetCapabilities()
--- target -> owner: 'cis_bridge'
--- database -> owner: 'cis_bridge'
--- inventoryProvider -> owner: 'cis_bridge'
-```
-
-`cis_debug` in the server console prints the same table with a `resolved` /
-`no provider installed` verdict per slot, and every target resource's raw state
-— because the operator's next question after "no provider" is always "is my
-framework even started?".
-
-```
-[cis_bridge] target: ox_target is started but exposes no "addSphereZone" export; not registered
-[cis_bridge] database: not registered, the configuration names "ghmattimysql"
-[cis_bridge] target: qb-target registered
-```
-
-Each of those three is a different problem with a different fix, which is why
-they are three different sentences.
+Verify the export signatures against the target's own source, not against a
+remembered API. Every third-party shape this resource adapts was checked against
+the upstream repository, and the two that had been written from memory were both
+wrong.
 
 ---
 
@@ -364,8 +587,10 @@ they are three different sentences.
 | No outbound except Discord | One auditable place for every request this platform makes |
 | `UseDiscordLogs` off by default | A placeholder webhook URL is inert no matter what it contains |
 | Bounded queue | A dead webhook drops entries rather than growing without limit |
+| Bounded client payload | The conformance-results handler is reachable by any connected player; the table is capped at 64 rows and every field is truncated before printing |
 | Conformance sends nothing | A test that mutates a customer's data is a support ticket |
-| Restricted command | `cis_bridge` and `cis_debug` both require admin in-game; the console is always allowed |
+| Console-only command | `cis_bridge` is `restricted`. It prints the `add_ace` line and lets the owner decide rather than granting itself access to somebody's server |
+| No secrets in the report | Names of third-party resources only. No webhook URLs, no credentials, no player identifiers |
 
 **What is deliberately not defended against:** anything in your `server.cfg`
 already has every permission you have. These are guards against accidents.
@@ -376,15 +601,28 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 15 assertions, no FiveM server required
+npm test          # 128 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
 ```
 
-Every adapter is a thin wrapper around a third-party export, so there is very
-little pure logic here — and testing it against a mock would be testing the
-mock. What is tested without a server is `Bridge.register`, because its four
-conditions are the difference between an adapter that works and one that raises
-on every call.
+Three suites, each in a **fresh Lua state** so one cannot read another's globals:
+
+| Suite | What it covers |
+|---|---|
+| `test/bridge.lua` | the registration helper: the four conditions, `AUTO`/`NONE`, the probe list, the start-order wait, and the failure shapes of `GetConfigSummary` |
+| `test/adapters.lua` | the adapters: transaction bind-key normalisation, the ox_inventory count decision, the Discord embed, the queue's refusals and its bound |
+| `test/report.lua` | the boot report: every registration outcome produces a row with a cause and a fix |
+
+The technique worth knowing: the fakes **record the exact table they were
+handed**, because the interesting question is almost never "what did it answer"
+— it is "what did it ask for". The transaction bug above is invisible to a fake
+that only returns a value.
+
+Every fix in this resource ships with an assertion that was **observed failing
+first**. The ones that matter have been mutation-checked by hand: removing the
+bind-key normalisation, restoring the empty footer, collapsing `nil` to zero,
+removing the start-order wait, or dropping the report's `fix` field each produce
+failures.
 
 The rest is tested where it can actually fail: on a live server, by
 `cis_bridge test`.
@@ -396,13 +634,15 @@ The rest is tested where it can actually fail: on a live server, by
 ```
 fxmanifest.lua        depends on cis_libs
 api.lua               data. the contract. not loaded at runtime
-shared/bridge.lua     the registration helper -- the four conditions
+shared/bridge.lua     the registration helper and the outcome table
 adapters/
   target/       ox_target.lua, qb_target.lua            (client)
   inventory/    ox, qb, qs, codem                        (server only)
   database/     oxmysql, mysql_connector, ghmattimysql, mongodb
-  discord/      webhooks.lua
-server/conformance.lua
+  discord/      webhooks.lua, embed.lua                  (embed is a module)
+server/
+  report.lua        the boot report
+  conformance.lua   the runner and the server half
 client/conformance.lua
 test/  tools/
 ```

@@ -5,11 +5,13 @@
   "description": "Integrator SDK: one adapter and one conformance test per third-party target.",
   "license": "SEE LICENSE IN LICENSE.md",
   "scripts": {
+    "lint": "node tools/lint.js",
+    "check:workflow": "node tools/check-workflow.js",
     "test": "node test/run.js",
-    "test:luacheck": "node tools/luacheck.js",
+    "test:syntax": "node tools/luacheck.js",
     "test:api": "node tools/validate-api.js --api api.lua --resource .",
     "test:api-selftest": "node tools/validate-api.js --selftest",
-    "test:all": "npm run test:luacheck && npm run test && npm run test:api-selftest && npm run test:api"
+    "test:all": "npm run check:workflow && npm run lint && npm run test:syntax && npm run test && npm run test:api-selftest && npm run test:api"
   },
   "devDependencies": {
     "fengari": "^0.1.5"

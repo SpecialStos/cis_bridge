@@ -3,8 +3,8 @@ name: tests
 # Pure-Lua suites only. They run under fengari with no FiveM server and no
 # game assets, so this is safe to run on every push.
 #
-# The integration harness (cis_libstest) needs a running fxserver and is NOT
-# run here. It is gated separately, by hand, on a test instance.
+# The integration harness needs a running fxserver and is NOT run here. It is
+# gated separately, by hand, on a test instance.
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   unit:
-    name: unit + binding + contracts + api contract
+    name: unit + api contract
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +27,73 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run test suite
+      - name: The workflow's own shell blocks parse
+        # A `run:` block that is valid YAML and invalid bash fails on the
+        # runner, not here. This repository has one that was a parse error for
+        # its entire history -- a `case` glob containing a backtick, which bash
+        # read as command substitution and died on before looking at a single
+        # file -- and every run died on that step while looking exactly like a
+        # broken codebase.
+        run: npm run check:workflow
+
+      - name: Install Lua 5.4 and luacheck
+        # Both are luarock/apt packages rather than npm ones, so `npm ci` cannot
+        # bring them. luacheck is pinned, because a linter that drifts under the
+        # tests makes a red build ambiguous: was the code wrong, or was the
+        # tool?
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4 luarocks
+          sudo luarocks install luacheck 1.2.0
+          luac5.4 -v
+          luacheck --version
+
+      - name: A MISSING TOOL MUST NOT LOOK LIKE A CLEAN BUILD
+        # Every step below depends on a command being present. If the install
+        # above silently did nothing -- a renamed package, a runner image
+        # change, a permissions problem on the sudo -- the checks that follow
+        # either fail on every file at once, which reads as "the code is
+        # broken", or pass without having looked at anything.
+        #
+        # This repository has already paid for that failure twice: a workflow
+        # that assumed `luac5.4` was on PATH reported EVERY file as a syntax
+        # error for its entire history, and a syntax check written as a bash
+        # `case` glob containing a backtick died before it parsed a single file.
+        # Both looked exactly like a broken codebase.
+        run: |
+          for tool in luacheck luac5.4 node; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::$tool is not on PATH -- the checks below DID NOT RUN"
+              exit 1
+            fi
+          done
+          echo "All tools present."
+
+      - name: Lint
+        run: npm run lint
+
+      - name: The luacheck config itself must parse
+        # A `.luacheckrc` that fails to load is not an error in most lint
+        # setups -- luacheck falls back to its defaults, which means every
+        # global this resource defines is reported as undefined and every
+        # FiveM native it calls is reported as an undefined global. That is
+        # hundreds of findings against code that is fine, and the instinct is
+        # to delete the config rather than read the error.
+        #
+        # So it is parsed explicitly here, before the lint that depends on it.
+        # Parsed with `load`, not executed: the config assigns globals and
+        # indexes a `files` table that only luacheck provides, so running it
+        # under a stock Lua would fail on a line that is correct.
+        run: |
+          lua5.4 -e 'assert(loadfile(".luacheckrc"))' \
+            && echo ".luacheckrc parses" \
+            || { echo "::error::.luacheckrc does not parse -- lint would silently fall back to defaults"; exit 1; }
+
+      - name: Syntax check
+        run: npm run test:syntax
+
+      - name: Run the test suites
+        # Three suites, each in a fresh Lua state. 128 assertions.
         run: npm test
 
       - name: Validate api.lua against the registered surface
@@ -50,7 +116,7 @@ jobs:
         # (exports[..][..]( ) rather than a specific quote style, so a
         # regression written with double quotes is caught too. Comment lines are
         # excluded so the documentation of the trap does not trip its own
-        # tripwire; test/binding.lua and test/contracts.lua are the real checks.
+        # tripwire; the suites are the real checks.
         run: |
           hits=$(grep -rnE 'exports\[[^]]+\]\[[^]]*\]\(' --include=*.lua . \
                  | grep -vE ':[[:space:]]*--' || true)
@@ -62,10 +128,7 @@ jobs:
           echo "No unbound exports calls found."
 
       - name: No third-party host in the shipped source
-        # The version check used to fire an outbound GET to a personal GitHub
-        # Pages URL on every boot. The endpoint is config now, and this keeps it
-        # that way: a hardcoded host in the source is a supply-chain risk, not a
-        # feature. test/contracts.lua checks the same thing behaviourally.
+        # A hardcoded host in the source is a supply-chain risk, not a feature.
         run: |
           hits=$(grep -rnE 'https?://[A-Za-z0-9.-]+\.(github\.io|githubusercontent\.com)' \
                  --include=*.lua . | grep -vE ':[[:space:]]*--' || true)
@@ -76,58 +139,70 @@ jobs:
           fi
           echo "No hardcoded third-party version hosts found."
 
-      - name: Install Lua 5.4
-        # ubuntu-latest does not ship luac5.4 on PATH. This workflow assumed it
-        # did for its entire history, so the syntax check "ran" against a
-        # command that did not exist and reported EVERY FILE as a syntax error.
-        # The tests passed and the syntax check failed on the whole tree at
-        # once, which is the worst possible failure shape: it looks exactly
-        # like the code being broken rather than the tool being absent.
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq lua5.4
-          luac5.4 -v
-
-      - name: Lua syntax check
-        # A MISSING TOOL MUST NOT LOOK LIKE BROKEN CODE. This guard exists so
-        # that if the install above ever fails, the step says "the check did
-        # not run" rather than reporting every file as unparseable.
+      - name: The isolation invariant still holds
+        # The entire licence argument for this resource is one file per
+        # third-party target, and it is only real if nothing outside that file
+        # REACHES ox_inventory. That is GPL-3.0 on roughly half of all servers
+        # and a hard dependency of Qbox.
         #
-        # fengari (npm test) is a Lua 5.3 VM, so it cannot catch a 5.4-only
-        # construct. That gap is the reason this step exists at all, and it is
-        # worth keeping even though the codebase uses nothing 5.4-specific --
-        # `lua54 'yes'` in fxmanifest.lua is an opt-in, and the check is what
-        # keeps that opt-in honest.
+        # This asserts the CALL, not the NAME. The first version of this check
+        # grepped for the bare name and failed on this repository's own
+        # fxmanifest.lua, api.lua and test files -- all of which mention
+        # ox_inventory in prose, in a string, or in a comment, and none of which
+        # depend on it in any way a licence cares about. A check that fires on
+        # documentation is a check somebody deletes on its first run, and
+        # deleting this one removes the only thing holding the mitigation in
+        # place.
+        #
+# `exports.ox_inventory` and `exports['ox_inventory']` are the two forms
+        # a call takes. Everything else is a comment, a test name, or the one
+        # adapter file this is about.
+        #
+        # The exclusion matches on the file's BASE NAME rather than its path,
+        # because `grep -rn PATTERN .` writes `./adapters/inventory/...` on the
+        # runner and `.\adapters\inventory\...` under Git Bash. An exclusion
+        # anchored on `/` silently stops matching on a developer machine -- which
+        # is where a check like this gets debugged, and where a red run teaches
+        # somebody the check is broken rather than that the boundary moved.
+        run: |
+          hits=$(grep -rnE "exports\.ox_inventory|exports\[['\"]ox_inventory['\"]\]" --include=*.lua . | grep -vE ':[[:space:]]*--' | grep -v 'ox_inventory\.lua' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::ox_inventory is called outside its one adapter file."
+            echo "That breaks the GPL isolation the whole resource exists to provide."
+            echo "$hits"
+            exit 1
+          fi
+          echo "ox_inventory is called in exactly one adapter file."
+
+      - name: Lua syntax check against the real 5.4 parser
+        # fengari is a Lua 5.3 VM, so it cannot catch a 5.4-only construct. That
+        # gap is the reason this step exists, and it is worth keeping even
+        # though the codebase uses nothing 5.4-specific -- `lua54 'yes'` in
+        # fxmanifest.lua is an opt-in, and this is what keeps the opt-in honest.
+        #
         # WHY THIS STEP IS NOT A ONE-LINER
         #
         # FiveM's backtick hash literals (`` `WEAPON_UNARMED` ``) are valid in
         # the Cfx Lua runtime and a syntax error to stock luac, so those files
         # have to be recognised and skipped rather than failed.
         #
-        # It was previously written as a `case` glob:
+        # A previous version of this step wrote that recognition as a bash glob:
         #
         #     *"unexpected symbol near `'"*) echo "skip";;
         #
         # which is a BASH PARSE ERROR. The glob opens a double quote, and a
-        # backtick inside double quotes is command substitution -- so bash
-        # starts looking for a closing backtick, never finds one, and dies with
-        # "unexpected EOF" and exit code 2 BEFORE IT PARSES A SINGLE FILE.
+        # backtick inside double quotes is command substitution -- so bash starts
+        # looking for a closing backtick, never finds one, and dies with
+        # "unexpected EOF" BEFORE IT PARSES A SINGLE FILE. Every run in this
+        # repository's history was red and every run died on this step, with no
+        # output to explain it. Nothing was ever checked.
         #
-        # That is why every run in this repository's history was red and every
-        # run died on the same step, with no output to explain it. Nothing was
-        # ever checked.
-        #
-        # The identification below uses grep with SINGLE-quoted patterns, where
-        # a backtick is literal, and it requires BOTH that luac complained about
-        # an unexpected symbol AND that the file actually contains a backtick
-        # literal. A file with a genuine syntax error does not have one, so it
-        # is still reported -- the skip is narrow on purpose.
+        # The identification below uses grep with SINGLE-quoted patterns, where a
+        # backtick is literal, and it requires BOTH that luac complained about an
+        # unexpected symbol AND that the file actually contains a backtick
+        # literal. A file with a genuine syntax error does not have one, so it is
+        # still reported -- the skip is narrow on purpose.
         run: |
-          if ! command -v luac5.4 >/dev/null 2>&1; then
-            echo "::error::luac5.4 is not on PATH -- the syntax check did not run"
-            echo "Do not read the absence of errors below as a pass."
-            exit 1
-          fi
           status=0
           while IFS= read -r f; do
             if err=$(luac5.4 -p "$f" 2>&1); then

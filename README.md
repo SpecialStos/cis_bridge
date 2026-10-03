@@ -35,6 +35,9 @@ ensure cis_core
 ensure cis_bridge
 ```
 
+**Start order does not matter.** An adapter waits up to 60 seconds for its
+target to start, so listing `cis_bridge` first is fine.
+
 ## Supported targets
 
 | Kind | Targets |
@@ -45,15 +48,40 @@ ensure cis_bridge
 | Outbound | Discord webhooks — **the only outbound request in the platform** |
 
 An adapter registers only when its target is actually started, the configured
-name matches, and the export it needs exists. Each of those three checks has a
-failure behind it, and an adapter that registered without them would raise on
-every call.
+name matches, and **every** export it calls exists. Each of those has a failure
+behind it, and an adapter that registered without them would raise on every
+call.
+
+`mysql-async` is **not** supported. It exports a different set from
+`mysql-connector` and the bridge does not pretend otherwise.
+
+## What it tells you at boot
+
+```
+  state    slot            target
+  -------  --------------  ---------------------------------------------
+  OK       target          ox_target         registered
+  OK       database        oxmysql           registered
+  DOWN     inventory       -                 qs-inventory is stopped and did not start within 60000ms
+  OK       discord         cis_bridge        registered
+
+  3 of 4 adapter slot(s) registered.
+
+  what to do about the rows above:
+    inventory          check the start order in server.cfg: put `ensure qs-inventory` BEFORE `ensure cis_bridge`
+```
+
+"Not registered" with no next step is a support ticket. Every refusal names its
+cause and its fix, and five refusals are told apart — not installed, installed
+but down, configured for something else, started without the right exports, and
+held by another resource — because they are five different problems.
 
 ## Conformance
 
 ```
 cis_bridge                # everything
 cis_bridge test database  # one target
+cis_bridge report         # what is wired up, and what to do about it
 ```
 
 Third-party resources change under us. ox_target changed how it handles zones;
@@ -68,17 +96,28 @@ the implementation, and the runner prints `PASS`, `FAIL` or `SKIP` per check.
 
 **Nothing is sent and nothing is written to a player.** The tests create and
 remove their own names, use obviously-synthetic ids, and touch no inventory. The
-one exception is the oxmysql test, which creates and drops a table with a
-conformance prefix — a conformance test that leaves a table on a customer's
-database is litter.
+one exception is the `oxmysql` test, which creates and drops a table with a
+conformance prefix and then asks `information_schema` whether it is gone — a
+conformance test that leaves a table on a customer's database is litter.
+
+The client runs its half on request, because a target resource can be broken on
+a client and healthy on the server, and the two registries are independent.
 
 ## Tests
 
 ```
 npm install
-npm test          # 15 assertions, no FiveM server required
-npm run test:all
+npm test          # 128 assertions, no FiveM server required
+npm run test:all  # + syntax check + the api contract self-test
 ```
+
+Every fix in this resource ships with an assertion that was observed failing
+first. The important ones have been mutation-checked by hand.
+
+## Docs
+
+**[DOCUMENTATION.md](DOCUMENTATION.md)** — the registration rules, every adapter
+contract, the conformance suite, and the boot report.
 
 ---
 

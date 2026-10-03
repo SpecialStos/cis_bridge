@@ -55,6 +55,18 @@ dependencies {
 }
 
 shared_scripts {
+    -- The `Cis` facade, the same one line a consumer's own resource uses.
+    -- cis_bridge calls it in the conformance suites, and it was not loaded:
+    -- `Cis` was nil, so every server conformance test reported "the test ran
+    -- to completion -- attempt to index global 'Cis'" on a perfectly healthy
+    -- install, and the client half died inside its thread before printing a
+    -- single line. A test harness that cannot run is worse than no harness,
+    -- because it looks like a product failure.
+    --
+    -- init.lua is the one shared file that is safe to load into a consumer: it
+    -- holds no state of its own, it captures this resource's exports table, and
+    -- the rest of the twelve stateful shared files stay where they are.
+    '@cis_libs/init.lua',
     'shared/bridge.lua',
 }
 
@@ -65,6 +77,11 @@ client_scripts {
 }
 
 server_scripts {
+    -- `adapters/discord/embed.lua` is deliberately NOT listed here. It is
+    -- `require`d by the Discord adapter, which is the only file that needs it,
+    -- and listing it as well would run it twice: once as a script and once as a
+    -- module. It is still found by every check that walks the filesystem, so the
+    -- syntax check and the api validator both see it.
     'adapters/database/oxmysql.lua',
     'adapters/database/mysql_connector.lua',
     'adapters/database/ghmattimysql.lua',

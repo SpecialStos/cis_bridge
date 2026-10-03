@@ -51,7 +51,12 @@ SOFTWARE.
 
 ## Third-party dependencies
 
-`cis_bridge` has **no runtime dependencies**. It is designed to run alongside —
-not on top of — ox_lib, ox_inventory, ox_target, oxmysql, qb-core, qbx_core or
-es_extended, but it does not require, vendor or ship any of them. Those remain
-under their own licences, and this project claims no rights in them.
+`cis_bridge` has **no third-party runtime dependencies**. It is designed to run
+alongside — not on top of — ox_lib, ox_inventory, ox_target, oxmysql, qb-core,
+qbx_core or es_extended, but it does not require, vendor or ship any of them.
+Those remain under their own licences, and this project claims no rights in them.
+
+It does have one **first-party** runtime dependency: `cis_libs`, declared in
+`fxmanifest.lua` and required for the resource to boot at all. Every adapter
+registers into `cis_libs` as a capability, and `cis_bridge` loads
+`@cis_libs/init.lua` for the `Cis` surface its conformance suites exercise.

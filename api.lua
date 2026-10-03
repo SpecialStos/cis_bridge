@@ -54,7 +54,7 @@ return {
         },
         CisBridgeDatabaseMysqlConnector = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
-            use = 'mysql-connector / mysql-async. Callback-first, bridged to await with a hard deadline. Refuses a transaction rather than faking one',
+            use = 'mysql-connector. Callback-first, bridged to await with a hard deadline. Refuses a transaction rather than faking one. NOT mysql-async, which is a different export set',
             realm = 'server',
             signature = '()',
         },
@@ -109,7 +109,7 @@ return {
         -- --------------------------------------------------------- discord
         CisBridgeDiscord = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
-            use = 'Discord webhooks. The ONLY outbound network request in the platform, which is why it is a file here rather than a function in a library. Returns { Log, QueueDepth }',
+            use = 'Discord webhooks. The ONLY outbound network request in the platform, which is why it is a file here rather than a function in a library. Returns { log, depth }',
             realm = 'server',
             signature = '()',
         },

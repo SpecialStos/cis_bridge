@@ -41,7 +41,7 @@ ensure cis_bridge
 |---|---|
 | Target | `ox_target`, `qb-target` |
 | Inventory | `ox_inventory`, `qb-inventory`, `qs-inventory`, `codem-inventory` |
-| Database | `oxmysql`, `mysql-connector` / `mysql-async`, `ghmattimysql` (deprecated), `mongodb` (unsupported — says so) |
+| Database | `oxmysql`, `mysql-connector`, `ghmattimysql` (deprecated), `mongodb` (unsupported — says so) |
 | Outbound | Discord webhooks — **the only outbound request in the platform** |
 
 An adapter registers only when its target is actually started, the configured

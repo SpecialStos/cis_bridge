@@ -88,5 +88,9 @@ CreateThread(function()
     if not exports['cis_libs']:WaitReady(15000) then
         return
     end
-    Bridge.register('target', 'qb-target', Bridge.configured('target'), 'AddBoxZone', 'CisBridgeTargetQb')
+    if Bridge.register('target', 'qb-target', Bridge.configured('target'),
+            { 'AddBoxZone', 'AddCircleZone', 'RemoveZone', 'AddTargetEntity', 'RemoveTargetEntity' },
+            'CisBridgeTargetQb') then
+        Bridge.publish('target', Adapter)
+    end
 end)

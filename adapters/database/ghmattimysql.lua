@@ -55,7 +55,26 @@ function Adapter.insert(sql, params)
     end))
 end
 
+-- The slot contract is `Update(sql, params) -> affected`, a NUMBER of rows. The
+-- driver was called through `execute`, whose callback yields the raw result
+-- object, so every `Cis.db.update` on a ghmattimysql server handed its caller
+-- an OkPacket table where a count was expected -- and a caller doing
+-- `if affected > 0 then` compared a table with a number and raised.
+--
+-- ghmattimysql exposes `update` on newer builds and only `execute` on older
+-- ones, so which one answers is a fact about the install rather than about the
+-- code. Probed, with the old path kept as the fallback. This is the same
+-- pattern, and for the same reason, as the oxmysql adapter's `single` probe.
+local hasUpdate = false
+
 function Adapter.update(sql, params)
+    if hasUpdate then
+        return Citizen.Await(await(function(done)
+            exports.ghmattimysql:update(sql, params or {}, function(affected)
+                done(affected)
+            end)
+        end))
+    end
     return Citizen.Await(await(function(done)
         exports.ghmattimysql:execute(sql, params or {}, function(affected)
             done(affected)
@@ -71,6 +90,15 @@ exports('CisBridgeDatabaseGhmatti', function() return Adapter end)
 
 CreateThread(function()
     if not exports['cis_libs']:WaitReady(15000) then return end
-    Bridge.register('database', 'ghmattimysql', Bridge.configured('database'),
-        'execute', 'CisBridgeDatabaseGhmatti')
+    -- Probe for `update` AFTER registering, on the same reasoning as the
+    -- oxmysql adapter: a build that registers but can only serve `execute`
+    -- still serves the contract, through the fallback above.
+    local ok, fn = pcall(function() return exports.ghmattimysql.update end)
+    hasUpdate = ok and fn ~= nil
+    if Bridge.register('database', 'ghmattimysql', Bridge.configured('database'),
+            { 'execute', 'scalar', 'insert' }, 'CisBridgeDatabaseGhmatti') then
+        Bridge.publish('database', Adapter)
+    end
+    print(('cis_bridge: ghmattimysql update=%s execute=%s')
+        :format(tostring(hasUpdate), tostring(not hasUpdate)))
 end)

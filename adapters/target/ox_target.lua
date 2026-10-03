@@ -100,5 +100,9 @@ CreateThread(function()
     if not exports['cis_libs']:WaitReady(15000) then
         return
     end
-    Bridge.register('target', 'ox_target', Bridge.configured('target'), 'addSphereZone', 'CisBridgeTargetOx')
+    if Bridge.register('target', 'ox_target', Bridge.configured('target'),
+            { 'addSphereZone', 'addBoxZone', 'removeZone', 'addLocalEntity', 'removeLocalEntity' },
+            'CisBridgeTargetOx') then
+        Bridge.publish('target', Adapter)
+    end
 end)

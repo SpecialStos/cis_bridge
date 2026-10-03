@@ -42,6 +42,9 @@ exports('CisBridgeInventoryQb', function() return Adapter end)
 
 CreateThread(function()
     if not exports['cis_libs']:WaitReady(15000) then return end
-    Bridge.register('inventoryProvider', 'qb-inventory',
-        Bridge.configured('inventory'), 'GetItemCount', 'CisBridgeInventoryQb')
+    if Bridge.register('inventoryProvider', 'qb-inventory',
+            Bridge.configured('inventory'), { 'GetItemCount', 'AddItem', 'RemoveItem' },
+            'CisBridgeInventoryQb') then
+        Bridge.publish('inventoryProvider', Adapter)
+    end
 end)

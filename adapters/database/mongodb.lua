@@ -48,6 +48,8 @@ exports('CisBridgeDatabaseMongodb', function() return Adapter end)
 
 CreateThread(function()
     if not exports['cis_libs']:WaitReady(15000) then return end
-    Bridge.register('database', 'mongodb', Bridge.configured('database'),
-        'isConnected', 'CisBridgeDatabaseMongodb')
+    if Bridge.register('database', 'mongodb', Bridge.configured('database'),
+            'isConnected', 'CisBridgeDatabaseMongodb') then
+        Bridge.publish('database', Adapter)
+    end
 end)

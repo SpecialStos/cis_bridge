@@ -35,6 +35,13 @@ end
 --- competes with a rival (two target resources, two inventory resources)
 --- respects the configured name.
 ---
+--- `probeExport` is what the adapter needs the target to HAVE, and it may be a
+--- single name or a list of them. The list form exists because one export is
+--- not enough to establish compatibility: an adapter that calls six of a
+--- target's exports has six ways to be wrong, and probing one of them proves
+--- only that the target exists. Every missing name is named, so the console line
+--- answers "which" and not merely "no".
+---
 --- `exportName` is PER ADAPTER and that is not a style choice. Two adapters in
 --- one resource registering the same export name means the second silently
 --- replaces the first, so whichever file happened to load last answers for
@@ -44,6 +51,23 @@ end
 ---
 --- @return boolean registered
 function Bridge.register(slot, target, configured, probeExport, exportName)
+    -- AUTO IS "NO OPINION", and reading it as a rival resource name is what
+    -- stopped a stock install from ever registering a driver. `Database.Type`
+    -- ships as "AUTO" in both the config and the library defaults, so every
+    -- adapter compared its own name against the string "AUTO", found a
+    -- mismatch, and refused -- on a server where oxmysql was running, with
+    -- nothing wrong anywhere. AUTO means "work it out from what is started",
+    -- which is exactly the presence path a nil already took.
+    if configured == 'AUTO' or configured == 'auto' then
+        configured = nil
+    end
+    -- The same sentence, from the other direction. 'NONE' is what
+    -- `GetConfigSummary` reports for a slot nobody configured, and it is an
+    -- ANSWER rather than a rival: there is no operator choice to respect, so
+    -- treating it as one refuses the only driver on the server.
+    if configured == 'NONE' or configured == 'none' then
+        configured = nil
+    end
     if configured and configured ~= '' and configured ~= target then
         print(('[cis_bridge] %s: not registered, the configuration names %q')
             :format(slot, tostring(configured)))
@@ -54,13 +78,38 @@ function Bridge.register(slot, target, configured, probeExport, exportName)
             :format(slot, target, slot))
         return false
     end
-    if probeExport then
-        local ok, fn = pcall(function()
-            return exports[target][probeExport]
+    if probeExport ~= nil and probeExport ~= '' then
+        local required = type(probeExport) == 'table' and probeExport or { probeExport }
+        local missing = {}
+        -- Read one target table, then index it per name. Reading
+        -- `exports[target]` per name would cross the boundary per probe and,
+        -- worse, on a stopped resource would RAISE on some names and not others
+        -- -- so which names are reported as missing would depend on which of
+        -- them happened to raise.
+        local okTarget, targetExports = pcall(function()
+            return exports[target]
         end)
-        if not ok or fn == nil then
-            print(('[cis_bridge] %s: %s is started but exposes no %q export; not registered')
-                :format(slot, target, tostring(probeExport)))
+        for _, name in ipairs(required) do
+            local present = false
+            if okTarget and targetExports then
+                -- The VALUE, not the absence of an error. Indexing a missing
+                -- export in FiveM answers nil rather than raising, so a bare
+                -- `pcall` around the index records "yes, present" for every
+                -- target ever seen -- which is the same mistake that let an
+                -- oxmysql adapter take its `single` branch against a build that
+                -- had no `single`.
+                local okName, fn = pcall(function()
+                    return targetExports[name]
+                end)
+                present = okName and fn ~= nil
+            end
+            if not present then
+                missing[#missing + 1] = tostring(name)
+            end
+        end
+        if #missing > 0 then
+            print(('[cis_bridge] %s: %s is started but exposes no %s export; not registered')
+                :format(slot, target, table.concat(missing, ' or ')))
             return false
         end
     end
@@ -83,6 +132,38 @@ end
 --- a very different sentence from "cis_bridge is not installed".
 function Bridge.registered()
     return registered
+end
+
+-- The method table each adapter registered, kept here so the conformance runner
+-- can test THIS RESOURCE'S OWN CODE rather than whatever capability happens to
+-- be answering.
+--
+-- This is not tidiness. cis_libs routes `Cis.inventory.count` to the
+-- `inventory` slot, which cis_core owns, and cis_bridge fills the
+-- `inventoryProvider` slot underneath it -- so a conformance suite that calls
+-- `Cis.inventory.*` is testing cis_core, and on a server without cis_core
+-- installed it reports four failing inventory adapters on a perfectly healthy
+-- bridge. Testing the adapter directly is also the more honest question: "does
+-- ox_inventory answer the way we assumed" is a fact about ox_inventory, and it
+-- should not change because somebody's service layer is missing.
+local adapters = {}
+
+--- Publish an adapter's method table after it has registered.
+---
+--- Called by the adapter itself, immediately after `Bridge.register` answers
+--- true, so the two cannot drift: an adapter that registers without publishing
+--- is simply absent from the conformance run, and an adapter that publishes
+--- without registering is a row that reports on a capability nobody holds.
+function Bridge.publish(slot, methods)
+    if type(methods) ~= 'table' then
+        error(('Bridge.publish(%s) needs the adapter method table'):format(slot), 2)
+    end
+    adapters[slot] = methods
+end
+
+--- The method table registered for a slot, or nil.
+function Bridge.adapterFor(slot)
+    return adapters[slot]
 end
 
 --- The configured third-party names, read through cis_libs so this resource has

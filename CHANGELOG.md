@@ -233,6 +233,13 @@ boundary.
   mean "no opinion" and the one setting (`Security.AuthorizedResources`) that a
   stock install gets wrong.
 
+- **`types/cis_bridge.lua`, generated.** LuaCATS annotations from the same two
+  inputs and the same generator, so an integrator's language server resolves
+  `exports['cis_bridge']:*`, marks a deprecated call, and carries the `use` string
+  as the migration note. It is never loaded by the manifest and is still syntax
+  checked — `tools/luacheck.js` walks the filesystem, so it cannot rot in a
+  directory nothing reads.
+
 - **`API.md`, generated.** Every export with its signature, realm, stability and
   the file that declares it, written from `api.lua` and from a scan of what the
   resource actually registers. `npm run docs:check` is in `npm run test:all`, so

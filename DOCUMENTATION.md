@@ -865,6 +865,8 @@ The rest is tested where it can actually fail: on a live server, by
 ```
 fxmanifest.lua        depends on cis_libs
 api.lua               data. the contract. not loaded at runtime
+API.md                generated from api.lua + the source. checked
+types/cis_bridge.lua  generated LuaCATS annotations. never loaded
 shared/bridge.lua     the registration helper and the outcome table
 adapters/
   target/       ox_target.lua, qb_target.lua            (client)

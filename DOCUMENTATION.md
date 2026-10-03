@@ -689,11 +689,11 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 200 assertions, no FiveM server required
+npm test          # 331 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
 ```
 
-Three suites, each in a **fresh Lua state** so one cannot read another's globals:
+Five suites, each in a **fresh Lua state** so one cannot read another's globals:
 
 | Suite | What it covers |
 |---|---|
@@ -701,11 +701,19 @@ Three suites, each in a **fresh Lua state** so one cannot read another's globals
 | `test/adapters.lua` | the adapters: transaction bind-key normalisation, the ox_inventory count decision, the Discord embed, the webhook allow-list, the queue's refusals and its bound |
 | `test/report.lua` | the boot report: every registration outcome produces a row with a cause and a fix |
 | `test/ratelimit.lua` | the cooldown: ten thousand calls in one instant, per-source isolation, `playerDropped` cleanup, a recycled source id, a clock that goes backwards, a clock that is nil or raises, and malformed sources |
+| `test/contract.lua` | **compliance with cis_libs**, read from the source on disk: the two manifest requirements, no deprecated API, every `cis_libs` export called actually existing, realm boundaries, `Cis.*` namespaces cis_libs defines, and no internal cis_libs files included |
 
 The technique worth knowing: the fakes **record the exact table they were
 handed**, because the interesting question is almost never "what did it answer"
 — it is "what did it ask for". The transaction bug above is invisible to a fake
 that only returns a value.
+
+`test/contract.lua` is the odd one out: fengari has no filesystem, so the
+harness reads the source and hands it over in two forms — comments stripped, and
+comments *and string contents* stripped. The second exists because a compliance
+rule that matches `Cis.target.` also matches it inside the sentence written to
+explain that `Cis.target` is a client surface, and a rule that fires on prose
+grows an exemption list until nobody trusts it.
 
 Every fix in this resource ships with an assertion that was **observed failing
 first**. The ones that matter have been mutation-checked by hand: removing the

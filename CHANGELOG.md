@@ -110,6 +110,28 @@ boundary.
 
 ### Added
 
+- **`test/contract.lua`** — compliance with cis_libs, read from the source on
+  disk rather than from a running VM. It checks the two manifest requirements
+  (`dependency 'cis_libs'` and `@cis_libs/init.lua`), refuses any deprecated
+  cis_libs API, checks that every `exports['cis_libs']:Name` called actually
+  exists, enforces the realm boundaries (`Cis.target` and `Cis.zones` are client
+  surfaces and must not appear in a server file), checks every `Cis.*` namespace
+  against the ones cis_libs defines, and refuses an `@cis_libs/server/...`
+  internal include.
+
+  It exists because a resource can pass every behavioural test in this
+  repository and still be building against a platform that has moved underneath
+  it. Six mutations were applied to confirm each rule bites: a deprecated call,
+  the manifest requirement removed, a client surface used in server code, an
+  export that does not exist, an internal cis_libs file included, and an unknown
+  namespace.
+
+  fengari has no filesystem, so the harness reads the source and hands it over
+  twice — comments stripped, and comments *and string contents* stripped. The
+  second form exists because the realm rule fired on the very sentence written to
+  explain that `Cis.target` is a client surface. A rule that matches prose grows
+  an exemption list until nobody trusts it.
+
 - **The boot report.** One row per adapter slot, with the outcome, the sentence
   that explains it and the next step. Five refusals are told apart: not
   installed, installed but down, configured for another resource, started

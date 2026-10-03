@@ -54,6 +54,28 @@ dependencies {
     'cis_libs',
 }
 
+-- NO `fxmeta { cis_requires = ... }`, AND THAT IS DELIBERATE.
+--
+-- cis_libs reads that key and reports any slot it names that has no provider:
+--
+--     fxmeta {
+--         cis_requires = 'database, target'
+--     }
+--
+-- which reads exactly like the thing this resource should declare. It is not.
+-- `cis_requires` means "this resource CANNOT WORK WITHOUT these slots", and cis_bridge
+-- can work with any subset of them -- a server with only ox_target and no
+-- database still gets a working target adapter, and a server with nothing at all
+-- gets a boot report that says exactly that.
+--
+-- Declaring it would put four "[x] requires capability X and no provider is
+-- registered" lines on every server that does not happen to run all four targets,
+-- which is most of them. A diagnostic that fires on the normal case is not a
+-- diagnostic.
+--
+-- What this resource offers instead is `cis_bridge report`, which covers the
+-- same ground and states the fix for each row -- see server/report.lua.
+
 shared_scripts {
     -- The `Cis` facade, the same one line a consumer's own resource uses.
     -- cis_bridge calls it in the conformance suites, and it was not loaded:

@@ -121,7 +121,7 @@ underneath it.
 
 ```
 npm install
-npm test          # 200 assertions, no FiveM server required
+npm test          # 331 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
 ```
 

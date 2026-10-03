@@ -625,6 +625,9 @@ wrong.
 | Bounded queue | A dead webhook drops entries rather than growing without limit |
 | Bounded client payload | The conformance-results handler is reachable by any connected player; the table is capped at 64 rows and every field is truncated before printing |
 | **Rate limit on the client handler** | That same handler prints to the console on every accepted call. Five seconds per source, refusals counted rather than logged, `playerDropped` cleanup |
+| **Validate before announcing** | A payload with no valid rows prints **nothing** — not a header, not a summary, not a name. The previous version printed a report header before looking at a single row, so junk produced a block of console that reads exactly like a report arrived |
+| **Rows counted before they are shown** | Junk rows do not consume the 64-row budget, so 10,000 of them cannot displace the one real result |
+| **Client command cooldown** | Ten seconds. It allocates a ped and four zones per run and is reachable by any player |
 | **Webhook host allow-list** | The platform's only outbound request can only reach Discord. Not a filter for the placeholder string — an allow-list of four hosts plus a webhook-shaped path |
 | Clock failure falls **closed** | If the clock is absent, nil, a string, or raises, the cooldown refuses rather than opening |
 | Conformance sends nothing | A test that mutates a customer's data is a support ticket |
@@ -689,11 +692,11 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 367 assertions, no FiveM server required
+npm test          # 411 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
 ```
 
-Six suites, each in a **fresh Lua state** so one cannot read another's globals:
+Seven suites, each in a **fresh Lua state** so one cannot read another's globals:
 
 | Suite | What it covers |
 |---|---|
@@ -703,6 +706,7 @@ Six suites, each in a **fresh Lua state** so one cannot read another's globals:
 | `test/ratelimit.lua` | the cooldown: ten thousand calls in one instant, per-source isolation, `playerDropped` cleanup, a recycled source id, a clock that goes backwards, a clock that is nil or raises, and malformed sources |
 | `test/contract.lua` | **compliance with cis_libs**, read from the source on disk: the two manifest requirements, no deprecated API, every `cis_libs` export called actually existing, realm boundaries, `Cis.*` namespaces cis_libs defines, and no internal cis_libs files included |
 | `test/globals.lua` | every shipped file loaded against a stubbed engine with a `_G` watcher on `__newindex`: no file writes an undeclared global, and each of the four declared globals is created only by the file that owns it |
+| `test/handler.lua` | **the player-reachable surface, attacked.** Every payload category against `cis_bridge:server:conformanceResults`: wrong types, 10,000 rows, a megabyte-long string, 10,000-deep nesting, terminal escape sequences, format specifiers, and a 5,000-call flood. Plus both commands' ACLs |
 
 The technique worth knowing: the fakes **record the exact table they were
 handed**, because the interesting question is almost never "what did it answer"

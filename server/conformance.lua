@@ -705,36 +705,54 @@ RegisterNetEvent('cis_bridge:server:conformanceResults', function(payload)
         return
     end
 
+    -- VALIDATE BEFORE ANNOUNCING.
+    --
+    -- The rows are walked and filtered first, and if nothing survives then
+    -- nothing is printed at all -- not a header, not a summary, not the player's
+    -- name.
+    --
+    -- The previous version printed the report header and the "reported N
+    -- failures" line before it looked at a single row, so a payload with no
+    -- valid rows in it -- an empty table, a nested table, five thousand junk
+    -- entries -- produced a block of console that reads exactly like a report
+    -- arrived. That is worse than printing nothing: an operator scanning for the
+    -- conformance output cannot tell a report from a forgery of one, and the
+    -- forgery is the thing a hostile client produces on purpose.
+    local rows, shown, notRun, failed = {}, 0, 0, 0
+    for _, r in ipairs(payload) do
+        -- Stop at the bound, and count how many were dropped so the summary can
+        -- say so rather than the reader assuming it is the whole thing.
+        if shown >= MAX_CLIENT_RESULTS then
+            notRun = notRun + 1
+        elseif type(r) == 'table' and type(r.name) == 'string' then
+            shown = shown + 1
+            if r.skipped == true then
+                notRun = notRun + 1
+            elseif r.ok ~= true then
+                failed = failed + 1
+            end
+            rows[#rows + 1] = r
+        end
+    end
+
+    if shown == 0 then
+        return
+    end
+
     local who = GetPlayerName(src) or ('id %d'):format(src)
     print('')
     print(('cis_bridge: client results from %s'):format(tostring(who)))
-    local failed, shown, notRun = 0, 0, 0
-    for _, r in ipairs(payload) do
-        -- Stop at the bound and say so, rather than printing 100000 rows into
-        -- an operator's console because a client sent them.
-        if shown >= MAX_CLIENT_RESULTS then
-            print(('  [client] %-46s SKIP -- more than %d rows were sent')
-                :format('the rest', MAX_CLIENT_RESULTS))
-            break
-        end
-        if type(r) == 'table' and type(r.name) == 'string' then
-            shown = shown + 1
-            local label = r.name:sub(1, 46)
-            local detail = type(r.detail) == 'string' and r.detail:sub(1, 120) or nil
-            if r.skipped == true then
-                notRun = notRun + 1
-                print(('  [client] %-46s %s%s'):format(
-                    'client', label, 'SKIP', detail and (' -- ' .. detail) or ''))
-            else
-                local ok = r.ok == true
-                if not ok then
-                    failed = failed + 1
-                end
-                print(('  [client] %-46s %s%s'):format(
-                    'client', label,
-                    ok and 'PASS' or 'FAIL',
-                    (not ok and detail) and (' -- ' .. detail) or ''))
-            end
+    for _, r in ipairs(rows) do
+        local label = r.name:sub(1, 46)
+        local detail = type(r.detail) == 'string' and r.detail:sub(1, 120) or nil
+        if r.skipped == true then
+            print(('  [client] %-46s %s%s'):format(
+                'client', label, 'SKIP', detail and (' -- ' .. detail) or ''))
+        else
+            print(('  [client] %-46s %s%s'):format(
+                'client', label,
+                r.ok == true and 'PASS' or 'FAIL',
+                (r.ok ~= true and detail) and (' -- ' .. detail) or ''))
         end
     end
     print(('cis_bridge: client %s reported %d failure(s) across %d check(s), %d skipped')

@@ -110,6 +110,15 @@ boundary.
 
 ### Added
 
+- **`test/handler.lua`** — attacks the one surface a player can reach, with the
+  payload categories that have actually broken things rather than a sample:
+  non-tables, a 10,000-row payload, a row carrying a megabyte of text, a
+  10,000-deep nested table, terminal escape sequences aimed at the operator's
+  console, format specifiers, and a 5,000-call flood. It asserts on what reached
+  the **output**, not merely that the handler did not raise — a handler that
+  quietly prints a megabyte of attacker-chosen text is worse than one that
+  crashes. It found one real bug and one vacuous test.
+
 - **`test/globals.lua`** — loads all eighteen shipped files against a stubbed
   engine with a metatable on `_G` watching `__newindex`, and asserts that no file
   writes an undeclared global and that each of the four declared globals is

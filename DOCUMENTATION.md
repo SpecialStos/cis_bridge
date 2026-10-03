@@ -689,11 +689,11 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 331 assertions, no FiveM server required
+npm test          # 367 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
 ```
 
-Five suites, each in a **fresh Lua state** so one cannot read another's globals:
+Six suites, each in a **fresh Lua state** so one cannot read another's globals:
 
 | Suite | What it covers |
 |---|---|
@@ -702,11 +702,20 @@ Five suites, each in a **fresh Lua state** so one cannot read another's globals:
 | `test/report.lua` | the boot report: every registration outcome produces a row with a cause and a fix |
 | `test/ratelimit.lua` | the cooldown: ten thousand calls in one instant, per-source isolation, `playerDropped` cleanup, a recycled source id, a clock that goes backwards, a clock that is nil or raises, and malformed sources |
 | `test/contract.lua` | **compliance with cis_libs**, read from the source on disk: the two manifest requirements, no deprecated API, every `cis_libs` export called actually existing, realm boundaries, `Cis.*` namespaces cis_libs defines, and no internal cis_libs files included |
+| `test/globals.lua` | every shipped file loaded against a stubbed engine with a `_G` watcher on `__newindex`: no file writes an undeclared global, and each of the four declared globals is created only by the file that owns it |
 
 The technique worth knowing: the fakes **record the exact table they were
 handed**, because the interesting question is almost never "what did it answer"
 — it is "what did it ask for". The transaction bug above is invisible to a fake
 that only returns a value.
+
+**`test/globals.lua` watches what RUNS, and that is not enough.** A missing
+`local` inside a function no suite ever calls is invisible to it — which was
+verified rather than assumed, by applying exactly that mutation and watching
+nothing fail. So it is not a substitute for a static analyser: **luacheck is the
+authority on undeclared names and CI installs it**, while this runs everywhere,
+including on a machine with no Lua toolchain at all, and catches the writes that
+actually happen. Both run; neither is described as the other.
 
 `test/contract.lua` is the odd one out: fengari has no filesystem, so the
 harness reads the source and hands it over in two forms — comments stripped, and

@@ -110,6 +110,18 @@ boundary.
 
 ### Added
 
+- **`test/globals.lua`** — loads all eighteen shipped files against a stubbed
+  engine with a metatable on `_G` watching `__newindex`, and asserts that no file
+  writes an undeclared global and that each of the four declared globals is
+  created only by its owner. The owner check matters: permission alone is not
+  enough, because `Report = {}` written by an inventory adapter satisfies "no
+  undeclared global" perfectly while being a mystery in six months.
+
+  It watches what *runs*, and it says so. A missing `local` inside a function no
+  suite calls is invisible to it — confirmed by applying that mutation and
+  watching nothing fail. luacheck is the static authority and CI installs it;
+  this runs everywhere and catches the writes that actually happen.
+
 - **`test/contract.lua`** — compliance with cis_libs, read from the source on
   disk rather than from a running VM. It checks the two manifest requirements
   (`dependency 'cis_libs'` and `@cis_libs/init.lua`), refuses any deprecated

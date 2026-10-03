@@ -155,6 +155,20 @@ boundary.
   quietly prints a megabyte of attacker-chosen text is worse than one that
   crashes. It found one real bug and one vacuous test.
 
+- **`test/runner.lua`** — the conformance RUNNER, which is the command an
+  operator actually types and which had no test of its own. A bug in the tally
+  is worse than a bug in a test: it reports the wrong answer confidently and
+  nothing downstream can tell. It asserts the arithmetic — PASS, FAIL and SKIP
+  counted separately, a test that RAISES counted once rather than once per place
+  it was counted, the target slots SKIPped on the server rather than failed, a
+  target that is merely absent never producing a FAIL line — and the two
+  behaviours around the client half: a full run asks every connected client, and
+  a single-target run does not.
+
+  It found that the runner did not tell an operator what to run next when
+  nothing registered. The boot report did; the command they had just typed did
+  not. It does now.
+
 - **`test/adapters-matrix.lua`** — every adapter method against every return
   shape the third party might produce, headless. The interesting differences
   between these targets are entirely in their **return shapes**, and a live
@@ -266,9 +280,9 @@ boundary.
 
 ### Verification
 
-534 assertions across nine suites, each in a fresh Lua state so one cannot read
+570 assertions across ten suites, each in a fresh Lua state so one cannot read
 another's globals. Every fix above ships with an assertion that was observed
-failing first, and the ones that matter were mutation-checked by hand. Thirty-three
+failing first, and the ones that matter were mutation-checked by hand. Thirty-eight
 mutations were applied and reverted across the three releases in this file.
 
 **Seven of those mutations initially SURVIVED, and every one of them was more

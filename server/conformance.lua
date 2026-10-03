@@ -532,6 +532,15 @@ function Conformance.run(only)
         print('  server is being adapted. Check that cis_libs is started and that the')
         print('  third-party resources you expect are started BEFORE cis_bridge.')
         print('')
+        -- The next command, in the same shape the boot report uses.
+        --
+        -- It was missing here and the report had it, which is the wrong way
+        -- round: an operator who has just run `cis_bridge test` and got an
+        -- empty answer is MORE likely to need the other command than one reading
+        -- a boot log, and the boot log already told them.
+        print('  `cis_bridge report` says what each adapter was waiting for, and the')
+        print('  fix for each one that is not registered.')
+        print('')
     end
 
     local ran, failed = 0, 0

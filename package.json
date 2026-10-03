@@ -11,7 +11,9 @@
     "test:syntax": "node tools/luacheck.js",
     "test:api": "node tools/validate-api.js --api api.lua --resource .",
     "test:api-selftest": "node tools/validate-api.js --selftest",
-    "test:all": "npm run check:workflow && npm run lint && npm run test:syntax && npm run test && npm run test:api-selftest && npm run test:api"
+    "test:all": "npm run check:workflow && npm run lint && npm run test:syntax && npm run test && npm run test:api-selftest && npm run test:api && npm run docs:check",
+    "docs": "node tools/gen-docs.js",
+    "docs:check": "node tools/gen-docs.js --check"
   },
   "devDependencies": {
     "fengari": "^0.1.5"

@@ -89,7 +89,22 @@ function readValue(L) {
       lua.lua_pop(L, 1)
       return null
     case lua.LUA_TBOOLEAN: {
-      const b = lua.lua_toboolean(L, -1) === 1
+      // `lua_toboolean` RETURNS A BOOLEAN. Not 0, not 1, not a truthy number --
+      // fengari's binding hands back a JS boolean directly.
+      //
+      // This compared against `1`, which is false for `true` as well as for
+      // `false`, so EVERY boolean in every api.lua read as false. Two rules were
+      // unreachable as a result -- E011, a deprecated entry needing a removal
+      // major in `until`, and E013, a deprecated entry saying what to use
+      // instead -- and a rule that can never fire is not a rule, it is a comment
+      // that looks like one.
+      //
+      // Found by generating the API reference, not by reading this file: the
+      // reference rendered `ghmattimysql`, which api.lua declares
+      // `deprecated = true`, as STABLE. That is the moment a silently-wrong
+      // boolean becomes visible instead of theoretical, and it is the argument
+      // for generating the documentation at all.
+      const b = lua.lua_toboolean(L, -1) === true
       lua.lua_pop(L, 1)
       return b
     }
@@ -510,4 +525,14 @@ function parseArgs(argv) {
   return out
 }
 
-process.exit(main(process.argv.slice(2)))
+// Exported so `gen-docs.js` loads api.lua through the SAME loader this checker
+// uses. Two loaders for one data file is two answers to the question, and the
+// one that is only used at doc-build time is the one nobody notices drifting.
+module.exports = { loadManifest, validate, Report, main }
+
+// Only run when invoked directly. `require`ing this file must not execute the
+// checker and exit the process underneath whatever required it -- which is
+// exactly what happened the first time gen-docs.js tried to reuse the loader.
+if (require.main === module) {
+  process.exit(main(process.argv.slice(2)))
+}

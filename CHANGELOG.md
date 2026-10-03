@@ -108,6 +108,28 @@ the suite asserts that a well-formed webhook is **accepted**, not only that a ba
 one is refused. A test that only proves refusal cannot tell a filter from a
 boundary.
 
+### Fixed
+
+- **Every boolean in `api.lua` read as `false`.** The manifest loader compared
+  `lua_toboolean`'s result against `1`, and fengari returns a real boolean --
+  so the comparison was false for `true` as well. Two validator rules were
+  unreachable as a result: **E011**, a deprecated entry needing a removal major
+  in `until`, and **E013**, a deprecated entry saying what to use instead. Both
+  had never fired, which means neither had ever been tested, and a rule that can
+  never fire is a comment that looks like a rule.
+
+  Found by *generating* the reference rather than by reading the validator:
+  `ghmattimysql` is declared `deprecated = true` and rendered as **stable**.
+  That is the argument for generated documentation in one sentence -- a wrong
+  boolean that has been wrong forever becomes visible the moment something else
+  consumes it.
+
+  Both rules now have a fixture under `test/api/broken/`. The first attempt at
+  the E011 fixture wrote `real.exports.X.until = false`, and `until` is a Lua
+  **keyword**, so the fixture failed to load and the self-test reported "the
+  rule did not raise" — a different failure with the same initials, and one a
+  less careful self-test would file as "E011 is broken".
+
 ### Added
 
 - **`test/handler.lua`** — attacks the one surface a player can reach, with the
@@ -152,6 +174,15 @@ boundary.
   second form exists because the realm rule fired on the very sentence written to
   explain that `Cis.target` is a client surface. A rule that matches prose grows
   an exemption list until nobody trusts it.
+
+- **`API.md`, generated.** Every export with its signature, realm, stability and
+  the file that declares it, written from `api.lua` and from a scan of what the
+  resource actually registers. `npm run docs:check` is in `npm run test:all`, so
+  the reference cannot describe an export that was renamed or omit one that was
+  added. It reuses the api validator's manifest loader rather than having a
+  second one, because two loaders for one data file is two answers to the same
+  question and the one only used at doc-build time is the one nobody notices
+  drifting.
 
 - **The boot report.** One row per adapter slot, with the outcome, the sentence
   that explains it and the next step. Five refusals are told apart: not

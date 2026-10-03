@@ -25,9 +25,15 @@ register myself as the capability.** That is small, which is why every adapter
 uses the shared helper rather than hand-rolling it — and why the helper's
 conditions are tested.
 
-If you are integrating this, §2 (the registration rules) and §3 (the adapter
-contracts) are what you need. §4 is the part that will save you a support
-thread, and §5 is the boot report, which exists for the same reason.
+If you are integrating this, **[API.md](API.md)** — every export, its signature,
+realm and stability, generated from `api.lua` — is the reference. §2 (the
+registration rules) and §3 (the adapter contracts) are what you need next. §4 is
+the part that will save you a support thread, and §5 is the boot report, which
+exists for the same reason.
+
+API.md is **generated** and `npm run docs:check` fails if it is not what
+`api.lua` and the source would produce. A hand-written reference is wrong within
+two releases; this one is wrong only if somebody skips the check.
 
 ---
 

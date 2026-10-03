@@ -133,6 +133,11 @@ first. The important ones have been mutation-checked by hand.
 **[DOCUMENTATION.md](DOCUMENTATION.md)** — the registration rules, every adapter
 contract, the conformance suite, and the boot report.
 
+**[API.md](API.md)** — every export, its signature, realm, stability and the
+file that declares it. **Generated** from `api.lua` and from a scan of what the
+resource actually registers; `npm run docs:check` fails if it is not current, so
+it cannot describe an export that was renamed or omit one that was added.
+
 ---
 
 **Author:** Cisoko · **Docs:** <https://docs.cisoko.net> · **Discord:** <https://discord.gg/cisoko>

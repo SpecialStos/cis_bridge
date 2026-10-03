@@ -109,6 +109,18 @@ jobs:
         # was built to trigger. Delete a fixture and this step fails.
         run: npm run test:api-selftest
 
+      - name: The generated API reference is current
+        # API.md is written from api.lua and from what the resource actually
+        # registers, so a hand-edited copy is a copy that is already wrong.
+        # `npm run test:api` proves the contract matches the code; this proves the
+        # DOCUMENTATION of the contract still matches the contract.
+        #
+        # This step is what found the bug that made two validator rules
+        # unreachable: api.lua declared ghmattimysql deprecated, and the generated
+        # reference rendered it STABLE, because the manifest loader compared
+        # lua_toboolean's result against 1 and fengari returns a real boolean.
+        run: npm run docs:check
+
       - name: Fail if the exports binding regresses
         # Guards the `self` trap documented at the top of init.lua.
         # A bracket-form export call shifts every argument one slot left and

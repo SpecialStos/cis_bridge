@@ -77,11 +77,20 @@ client_scripts {
 }
 
 server_scripts {
-    -- `adapters/discord/embed.lua` is deliberately NOT listed here. It is
-    -- `require`d by the Discord adapter, which is the only file that needs it,
-    -- and listing it as well would run it twice: once as a script and once as a
-    -- module. It is still found by every check that walks the filesystem, so the
-    -- syntax check and the api validator both see it.
+    -- TWO files are deliberately NOT listed here, and both are `require`d by the
+    -- file that needs them:
+    --
+    --   adapters/discord/embed.lua  -- the webhook payload builder
+    --   server/ratelimit.lua        -- the per-source cooldown
+    --
+    -- Listing them as well would run each twice: once as a script and once as a
+    -- module. Being invisible to the manifest is the price of being loadable
+    -- without the engine, which is what lets the unit suite exercise both -- and
+    -- the empty-footer 400 and the cooldown are exactly the two things that must
+    -- not be verified only on a live server.
+    --
+    -- Both are still found by every check that walks the filesystem, so the
+    -- syntax check, the api validator and the GPL-isolation grep all see them.
     'adapters/database/oxmysql.lua',
     'adapters/database/mysql_connector.lua',
     'adapters/database/ghmattimysql.lua',

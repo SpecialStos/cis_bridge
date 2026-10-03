@@ -44,6 +44,8 @@
 --      cis_bridge test              -- everything
 --      cis_bridge test database     -- one target
 
+local Cooldown = require 'server.ratelimit'
+
 Conformance = {}
 
 local results = {}
@@ -428,6 +430,23 @@ local function discordTest()
     record('discord', 'refuses an empty webhook', blank == false)
     record('discord', 'still queued nothing',
         select(1, adapter.depth()) == depthBefore and select(2, adapter.depth()) == droppedBefore)
+
+    -- The URL is an ARGUMENT to this method and this is the platform's only
+    -- outbound request, so anything that is not a Discord webhook has to be
+    -- refused before it reaches the queue. Refusing it here is safe: the drain
+    -- loop posts what IS queued, and nothing is queued by a refusal.
+    --
+    -- The URL used is an unroutable `.invalid` host, which is reserved by
+    -- RFC 6761 and can never resolve. So even a bug that queued it would not
+    -- send it anywhere, and this assertion can never cause a real request.
+    local offsite = adapter.log('https://cis_bridge.invalid/api/webhooks/1/token',
+        'cis_bridge conformance', 'never sent', 'red', false)
+    record('discord', 'refuses a webhook on a host that is not Discord', offsite == false)
+    local plain = adapter.log('http://discord.com/api/webhooks/1/token',
+        'cis_bridge conformance', 'never sent', 'red', false)
+    record('discord', 'refuses a webhook that is not HTTPS', plain == false)
+    record('discord', 'queued nothing for either',
+        select(1, adapter.depth()) == depthBefore and select(2, adapter.depth()) == droppedBefore)
 end
 
 -- ===========================================================================
@@ -640,11 +659,52 @@ end
 -- connected player and this handler prints whatever it is given.
 local MAX_CLIENT_RESULTS = 64
 
+-- THIS HANDLER IS REACHABLE BY EVERY CONNECTED PLAYER, AND IT PRINTS.
+--
+-- `cis_bridge:server:conformanceResults` is a net event, so a cheat menu can
+-- fire it as fast as the executor likes with any payload. Each accepted call
+-- prints up to MAX_CLIENT_RESULTS lines into the server console, and the server
+-- console is the operator's only window onto a running server -- so a player who
+-- fires this in a loop does not break anything, they bury it. A console that
+-- scrolls at thousands of lines a second is a console nobody is reading, which
+-- means the one command this resource exists to provide stops being useful
+-- exactly when it is needed.
+--
+-- The cooldown is per SOURCE and generous enough that a real answer is never
+-- refused. The whole point of this event is a report a human asked for, which
+-- happens on the order of once per server lifetime, so five seconds costs
+-- nothing and removes the flood entirely.
+--
+-- Refusals are counted rather than logged. A per-refusal log line from a
+-- flooding client is the same flood with extra steps.
+local CLIENT_COOLDOWN_MS = 5000
+local clientCooldown = Cooldown.new({ intervalMs = CLIENT_COOLDOWN_MS })
+
+--- Drop a player's cooldown when they disconnect.
+---
+--- Without this the table is a slow leak keyed by a source id that FiveM reuses,
+--- so a server that churns players for a month accumulates one entry per player
+--- who ever answered -- and the entry outlives the session by however long the
+--- server runs.
+AddEventHandler('playerDropped', function()
+    local src = source
+    if src then
+        clientCooldown:forget(src)
+    end
+end)
+
 RegisterNetEvent('cis_bridge:server:conformanceResults', function(payload)
     local src = source
     if src == 0 or type(payload) ~= 'table' then
         return
     end
+
+    -- Cooldown BEFORE any work, and before printing the player's name. The name
+    -- is the one thing here that goes to the console unconditionally.
+    if not clientCooldown:take(src) then
+        return
+    end
+
     local who = GetPlayerName(src) or ('id %d'):format(src)
     print('')
     print(('cis_bridge: client results from %s'):format(tostring(who)))

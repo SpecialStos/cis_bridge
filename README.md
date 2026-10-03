@@ -103,11 +103,25 @@ conformance test that leaves a table on a customer's database is litter.
 The client runs its half on request, because a target resource can be broken on
 a client and healthy on the server, and the two registries are independent.
 
+## Security
+
+The Discord webhook is the only outbound request this platform makes, so its
+destination is an **allow-list**: HTTPS only, one of four Discord hosts, and a
+webhook-shaped path. A caller who can reach the capability cannot point the
+server anywhere else — the worst they can do is drop a log line, which is what a
+log line is worth to a caller who should not have had one.
+
+There is exactly one net event a player can reach. Its payload is bounded, every
+field is truncated before it is printed, and the handler is rate limited per
+source — because a console that scrolls at thousands of lines a second is a
+console nobody is reading, and the report an operator asked for is somewhere
+underneath it.
+
 ## Tests
 
 ```
 npm install
-npm test          # 128 assertions, no FiveM server required
+npm test          # 200 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
 ```
 

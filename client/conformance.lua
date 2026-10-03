@@ -191,6 +191,24 @@ end)
 
 -- Also reachable from the client console, so a developer testing a target adapter
 -- does not have to be a server admin to run it.
+--
+-- Cooldown, because this is the ONE command in the resource that any player can
+-- invoke and that ALLOCATES -- a ped, and four target zones, per run. Un-
+-- restricted and unthrottled, a macro turns a one-line diagnostic into a client
+-- that spends its frame budget creating and deleting entities, on a server where
+-- the person who would notice is not looking at their own console. Ten seconds is
+-- far longer than a human needs to read a report and costs a spammer nothing,
+-- because the report is the thing being spammed.
+local lastRun = 0
 RegisterCommand('cis_bridge_client', function()
+    local now = GetGameTimer()
+    if now - lastRun < 10000 then
+        -- Said to the player rather than printed to a shared console, because this
+        -- is the only line in the resource that goes to one.
+        print('cis_bridge: that ran a moment ago. It creates and removes a target and a '
+            .. 'ped each time, so it is not free.')
+        return
+    end
+    lastRun = now
     run()
 end, false)

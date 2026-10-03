@@ -72,6 +72,7 @@ const SUITES = [
   'test/bridge.lua',
   'test/adapters.lua',
   'test/report.lua',
+  'test/ratelimit.lua',
 ]
 
 let failed = false

@@ -38,7 +38,17 @@ local STATUS = {
     not_started = { label = 'DOWN    ', detail = 'installed but not started' },
     configured_elsewhere = { label = 'OTHER   ', detail = 'the configuration names a different resource' },
     missing_export = { label = 'NO API  ', detail = 'started, but without the exports this adapter needs' },
-    refused = { label = 'REFUSED ', detail = 'another resource already holds the capability' },
+    -- Two DIFFERENT refusals, and the distinction is the whole point. cis_libs
+    -- refuses a resource that is not in `Security.AuthorizedResources` -- which is
+    -- what a stock install gets, because an empty allow-list is restrictive -- and
+    -- it refuses a second registrant because the slot is already held. One fix is
+    -- a line of configuration and the other is stopping a resource. A single
+    -- "REFUSED" row with a single sentence sends the operator the wrong way every
+    -- time, and the wrong way is "find the other resource", which does not exist
+    -- in the common case.
+    not_authorized = { label = 'NO AUTH ', detail = 'cis_libs will not let this resource fill the slot' },
+    held_elsewhere = { label = 'REFUSED ', detail = 'another resource already provides this capability' },
+    refused = { label = 'REFUSED ', detail = 'cis_libs refused the registration' },
 }
 
 --- One line per adapter slot, in the fixed order Bridge.SLOTS declares.

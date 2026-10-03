@@ -3,6 +3,9 @@
 **Version 1.1.0.** One adapter, and one conformance test, per third-party
 target.
 
+**Security posture.** The Discord URL is an allow-list, the one player-reachable
+handler is rate limited, and both are unit tested rather than asserted. See §7.
+
 ---
 
 ## §0 — Read this first
@@ -362,7 +365,39 @@ the cause.
 
 The rule is now: **omit an optional section entirely rather than include it
 empty**, and the builder lives in `adapters/discord/embed.lua` so it can be
-loaded and tested without the engine. There are no cosmetics, because cis_libs
+loaded and tested without the engine.
+
+#### The destination is an allow-list, not a filter
+
+`log(webhookURL, ...)` takes its destination as an **argument**. cis_libs passes
+its own configured links, but every other resource on the server can call this
+capability with whatever it likes.
+
+A rule that only rejects the literal string `CHANGE-ME` therefore means every
+other URL is a live request target, and the resource that supplied it can point
+the server wherever it likes — its own collector, an internal service, a
+metadata endpoint. That is server-side request forgery built out of a logging
+adapter, and it takes nothing more than a call.
+
+So the destination is a property of the adapter:
+
+| | |
+|---|---|
+| Scheme | `https` only |
+| Host | `discord.com`, `discordapp.com`, `canary.discord.com`, `ptb.discord.com` — a table, not a pattern |
+| Path | `/api/webhooks/<digits>/<token>` |
+
+Everything else is discarded before it reaches the queue. The worst outcome of a
+hostile caller is a dropped log line, which is what a log line is worth to a
+caller that should not have had one.
+
+It is written as a table rather than as a Lua pattern because Lua patterns have
+no alternation — `(app)` is five literal characters, not a group. The first
+version of this rule was a pattern, it matched **nothing**, and the adapter
+silently stopped sending. That is the exact failure the empty-footer bug was,
+arriving again through a different door, and it is why there is now a test
+asserting that a well-formed webhook is *accepted* and not only that a bad one
+is refused. There are no cosmetics, because cis_libs
 will not re-export them and there is nothing truthful to put in one. An operator
 who wants a footer has exactly one function to edit.
 
@@ -467,7 +502,8 @@ can pass the server's checks and fail the client's.
 
 A client answers with a table of results. An untrusted client can send anything,
 so the server prints and counts, never treats a client's `PASS` as proof of
-anything it did not check itself, and bounds the payload at 64 rows.
+anything it did not check itself, bounds the payload at 64 rows, truncates every
+field before printing it, and **rate limits the handler itself** — see §7.
 
 It also runs on demand from the client console with `cis_bridge_client`.
 
@@ -588,9 +624,61 @@ wrong.
 | `UseDiscordLogs` off by default | A placeholder webhook URL is inert no matter what it contains |
 | Bounded queue | A dead webhook drops entries rather than growing without limit |
 | Bounded client payload | The conformance-results handler is reachable by any connected player; the table is capped at 64 rows and every field is truncated before printing |
+| **Rate limit on the client handler** | That same handler prints to the console on every accepted call. Five seconds per source, refusals counted rather than logged, `playerDropped` cleanup |
+| **Webhook host allow-list** | The platform's only outbound request can only reach Discord. Not a filter for the placeholder string — an allow-list of four hosts plus a webhook-shaped path |
+| Clock failure falls **closed** | If the clock is absent, nil, a string, or raises, the cooldown refuses rather than opening |
 | Conformance sends nothing | A test that mutates a customer's data is a support ticket |
 | Console-only command | `cis_bridge` is `restricted`. It prints the `add_ace` line and lets the owner decide rather than granting itself access to somebody's server |
 | No secrets in the report | Names of third-party resources only. No webhook URLs, no credentials, no player identifiers |
+
+### 7.1 The one player-reachable surface
+
+This resource has exactly **one** net event handler a player can reach:
+
+```
+cis_bridge:server:conformanceResults   (client -> server)
+```
+
+Everything else a player can do to it, they can do to a resource that owns no
+data: it registers capabilities it has already proved it needs, creates and drops
+one conformance-prefixed database table on request, and draws one diagnostic.
+
+Even so, that handler has three defences, because it is the only place where an
+attacker with a Lua executor can make the **server** do something:
+
+| Defence | Against |
+|---|---|
+| Payload must be a table, ≤ 64 rows | A malformed or enormous packet reaching the printing loop |
+| Every string truncated (46 / 120 chars) | Terminal escape sequences and log-line injection |
+| **Per-source cooldown, 5s** | A flood that does not crash anything but scrolls the operator's only window past the report they asked for |
+
+The cooldown lives in `server/ratelimit.lua` and has its own suite. Three
+properties of it are asserted rather than assumed, because each is a way for a
+guard to quietly stop guarding:
+
+- **per source, not global** — a global guard lets one player lock everyone else
+  out of the report, which turns a flood control into a denial of the feature;
+- **forget on `playerDropped`** — FiveM recycles server ids, so without cleanup
+  the next player to receive a used id has their first request refused;
+- **clock failure falls closed** — an absent, nil, string-valued or raising
+  clock refuses rather than opening.
+
+`server/ratelimit.lua` is `require`d rather than listed in `fxmanifest`, so it can
+be loaded and tested without the engine. `tools/luacheck.js` resolves every
+`require` path against the tree, because a typo there fails nothing until the
+resource is started on a customer's server with a green build behind it.
+
+### 7.2 What was audited and found
+
+A full static pass over all sixteen shipped Lua files. Four findings, all fixed
+in 1.1.0:
+
+| # | Severity | Finding |
+|---|---|---|
+| 1 | HIGH | The client-results handler had **no rate limit**. A cheat menu could fire it thousands of times a second; each accepted call printed up to 64 lines into the operator's console. |
+| 2 | MEDIUM | The boot report told an **unauthorised** registration to "stop the other resource". Since cis_libs 2.2.0 an empty allow-list refuses everything, so this is what a stock install hits — and it pointed at a resource that does not exist. |
+| 3 | MEDIUM | The Discord URL check rejected only the literal string `CHANGE-ME`, making an arbitrary caller-supplied URL a live server-side request target. |
+| 4 | LOW | `cis_bridge_client` was unrestricted and allocates a ped and four zones per run, with no cooldown. |
 
 **What is deliberately not defended against:** anything in your `server.cfg`
 already has every permission you have. These are guards against accidents.
@@ -601,7 +689,7 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 128 assertions, no FiveM server required
+npm test          # 200 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
 ```
 
@@ -610,8 +698,9 @@ Three suites, each in a **fresh Lua state** so one cannot read another's globals
 | Suite | What it covers |
 |---|---|
 | `test/bridge.lua` | the registration helper: the four conditions, `AUTO`/`NONE`, the probe list, the start-order wait, and the failure shapes of `GetConfigSummary` |
-| `test/adapters.lua` | the adapters: transaction bind-key normalisation, the ox_inventory count decision, the Discord embed, the queue's refusals and its bound |
+| `test/adapters.lua` | the adapters: transaction bind-key normalisation, the ox_inventory count decision, the Discord embed, the webhook allow-list, the queue's refusals and its bound |
 | `test/report.lua` | the boot report: every registration outcome produces a row with a cause and a fix |
+| `test/ratelimit.lua` | the cooldown: ten thousand calls in one instant, per-source isolation, `playerDropped` cleanup, a recycled source id, a clock that goes backwards, a clock that is nil or raises, and malformed sources |
 
 The technique worth knowing: the fakes **record the exact table they were
 handed**, because the interesting question is almost never "what did it answer"
@@ -639,13 +728,25 @@ adapters/
   target/       ox_target.lua, qb_target.lua            (client)
   inventory/    ox, qb, qs, codem                        (server only)
   database/     oxmysql, mysql_connector, ghmattimysql, mongodb
-  discord/      webhooks.lua, embed.lua                  (embed is a module)
+  discord/      webhooks.lua, embed.lua
 server/
   report.lua        the boot report
   conformance.lua   the runner and the server half
+  ratelimit.lua     the per-source cooldown
 client/conformance.lua
 test/  tools/
 ```
+
+**Two files are `require`d rather than listed in `fxmanifest`**, because both have
+to be loadable without the FiveM engine so a unit suite can exercise them:
+
+| Module | Required by | What the suite proves about it |
+|---|---|---|
+| `adapters/discord/embed.lua` | the Discord adapter | that the payload contains no empty table, which is the 400 |
+| `server/ratelimit.lua` | the conformance runner | that the guard closes, per source, and survives a recycled id |
+
+The cost is a path that only fails at resource load, so `tools/luacheck.js`
+resolves every `require` against the tree on every run.
 
 ---
 

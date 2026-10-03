@@ -64,6 +64,50 @@ The release where a stock install stopped being broken.
   `os.exit(1)` took the fengari state down with it, so a failure in one suite
   was reported against the previous one and the rest never ran.
 
+### Security
+
+Found by a full static pass over all sixteen shipped Lua files. Four findings,
+all fixed and all unit tested.
+
+- **[HIGH] The client-results handler had no rate limit.**
+  `cis_bridge:server:conformanceResults` is a net event, so a cheat menu can fire
+  it as fast as the executor likes with any payload. Each accepted call printed
+  up to 64 lines into the server console — the operator's only window onto a
+  running server. A player who fires it in a loop breaks nothing and buries
+  everything. Now: a per-source cooldown, refusals counted rather than logged,
+  and `playerDropped` cleanup so the table does not leak as FiveM recycles source
+  ids.
+- **[MEDIUM] The boot report diagnosed the wrong cause for an unauthorised
+  registration.** One `REFUSED` row covered both "another resource holds this
+  slot" and "cis_libs will not let this resource fill it", and every `REFUSED`
+  row said "stop the other resource". Since cis_libs 2.2.0 an **empty**
+  `AuthorizedResources` refuses every resource, so the second case is what a
+  stock install hits — and the report was pointing at a resource that does not
+  exist. The two are now `NO AUTH` and `REFUSED` with opposite fixes, and an
+  unrecognised reason passes cis_libs' own sentence through rather than replacing
+  it with a guess.
+- **[MEDIUM] The Discord URL check was a filter, not a boundary.** It rejected
+  the literal string `CHANGE-ME`, which makes every other URL a live request
+  target for any resource that can call the capability — server-side request
+  forgery built out of a logging adapter. Now an allow-list: HTTPS only, one of
+  four Discord hosts, a webhook-shaped path. Nothing else reaches the queue.
+- **[LOW] `cis_bridge_client` was unrestricted with no cooldown**, and allocates
+  a ped and four target zones per run. Now ten seconds between runs.
+
+The cooldown is a separate module so it can be tested without the engine, and its
+suite asserts the three ways a guard quietly stops guarding: it is per source
+rather than global, it forgets on `playerDropped` so a recycled id is not blocked,
+and every clock failure — absent, nil, a string, or raising — refuses rather than
+opens.
+
+**A bug worth recording.** The URL allow-list was first written as a Lua pattern
+using `(app)` for alternation. Lua patterns have no alternation, so that matched
+nothing and the adapter silently stopped sending — the same failure the empty
+footer had, arriving through a different door. It is now a table of hosts, and
+the suite asserts that a well-formed webhook is **accepted**, not only that a bad
+one is refused. A test that only proves refusal cannot tell a filter from a
+boundary.
+
 ### Added
 
 - **The boot report.** One row per adapter slot, with the outcome, the sentence

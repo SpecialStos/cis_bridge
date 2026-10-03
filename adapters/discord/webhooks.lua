@@ -44,8 +44,64 @@ end
 -- placeholder, so an unconfigured URL is treated as no URL at all and the
 -- message is discarded silently -- the log line itself already went to the
 -- console, which is the point of having two sinks.
+--
+-- THE URL IS ALSO CHECKED FOR SHAPE, NOT JUST FOR BEING ABSENT.
+--
+-- This is the only place in the platform that makes an outbound request, and the
+-- URL arrives as an ARGUMENT: `log(webhookURL, ...)`. cis_libs passes its own
+-- configured links, but every other resource on the server can call this
+-- capability with whatever it likes. A rule that only rejects the literal string
+-- 'CHANGE-ME' means any URL that is not that string is a live request target,
+-- and the resource that supplied it can point the SERVER at an address of its
+-- choosing -- its own collector, an internal service, a metadata endpoint. That
+-- is server-side request forgery built out of a logging adapter, and it needs
+-- nothing more than a call.
+--
+-- So the destination is a property of the adapter, not of the caller: the only
+-- host this will ever contact is Discord, and only a path that looks like a
+-- webhook. Everything else is discarded before it reaches the queue, so the
+-- worst outcome of a hostile caller is a dropped log line -- which is what a
+-- log line is worth to a caller that should not have had one.
+--
+-- Discord's own hosts. An ALLOW-LIST rather than a pattern that looks for the
+-- word "discord" somewhere in the string, for two reasons.
+--
+-- The obvious single-pattern version cannot be written correctly in a Lua
+-- pattern: Lua patterns have no alternation, so `(app)` is five literal
+-- characters and not a group. A hand-rolled pattern that looks right is worse
+-- than a table here, because the first version of this matched NOTHING and the
+-- adapter silently stopped sending -- which is the exact failure this whole file
+-- was rewritten to end.
+--
+-- And an allow-list is the more honest shape of the rule anyway. The property
+-- is "this adapter contacts Discord and nothing else", and a table says that
+-- directly. A pattern has to be re-derived every time somebody adds a host, and
+-- the derivation is where the mistake happens.
+local ALLOWED_HOSTS = {
+    ['discord.com'] = true,
+    ['discordapp.com'] = true,
+    ['canary.discord.com'] = true,
+    ['ptb.discord.com'] = true,
+}
+
+-- The token is the part after the id. Its own character class is deliberately
+-- loose -- Discord has changed it before -- but it is anchored at both ends and
+-- cannot contain a slash, so the path cannot be extended past it.
+local WEBHOOK_PATH = '^/api/webhooks/%d+/[%w%-%._]+$'
+
 local function usable(url)
-    return type(url) == 'string' and url ~= '' and not url:find('CHANGE-ME', 1, true)
+    if type(url) ~= 'string' or url == '' then
+        return false
+    end
+    -- Two captures, which Lua patterns DO have. Splitting the host out and
+    -- matching it against a table is what makes the host check exact: nothing
+    -- that merely contains "discord" gets through, and nothing that is Discord's
+    -- but unlisted is contacted.
+    local host, path = url:match('^https://([^/]+)(/.*)$')
+    if not host or not ALLOWED_HOSTS[host] then
+        return false
+    end
+    return path:match(WEBHOOK_PATH) ~= nil
 end
 
 -- Built at send time, not push time: the version string is read when the batch

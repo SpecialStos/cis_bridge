@@ -32,6 +32,10 @@ _G.GetResourceMetadata = function() return '1.1.0' end
 -- order they were written in.
 local started = {}
 local registerFails = false
+-- The REASON cis_libs refused, so a test can hand back the real sentences rather
+-- than one canned string. Two of them mean opposite things and need opposite
+-- fixes, which is the entire reason this variable exists.
+local registerReason = 'held by another resource'
 _G.GetResourceState = function(name) return started[name] or 'missing' end
 -- `exports` is BOTH callable -- that is how a resource declares its own export
 -- -- and indexable, because it is also how every adapter reaches a third party.
@@ -47,7 +51,7 @@ _G.exports = setmetatable({
         WaitReady = function() return true end,
         GetConfigSummary = function() return nil end,
         RegisterCapability = function()
-            if registerFails then return false, 'held by another resource' end
+            if registerFails then return false, registerReason end
             return true
         end,
         GetCapabilities = function() return _G.__caps end,
@@ -141,13 +145,48 @@ check(type(dbRow.fix) == 'string' and mentions(dbRow.fix, 'server.cfg'),
 
 -- =============================================== 6. refused by another resource
 registerFails = true
+registerReason = 'capability "database" is already registered by cis_core'
 Bridge.register('database', 'other_db', nil, 'query', 'D5')
-registerFails = false
 rows = GetBridgeReport()
 dbRow = rowFor(rows, 'database')
 check(dbRow.label == 'REFUSED ', 'a slot another resource already holds says REFUSED')
 check(type(dbRow.fix) == 'string' and mentions(dbRow.fix, 'one resource'),
     'and the fix explains that only one provider may hold a slot')
+
+-- ================================ 6b. refused because WE are not authorised
+--
+-- The one a stock install actually hits. Since cis_libs 2.2.0 an EMPTY
+-- `AuthorizedResources` refuses every resource, so a server that installed
+-- cis_bridge without adding it to the allow-list gets this refusal on all four
+-- slots -- and the fix is one line of configuration, not "stop another resource".
+--
+-- Telling this case to go looking for the other resource is the worst outcome
+-- available: it sends an operator hunting for something that does not exist, and
+-- it is the boot report -- the artifact whose whole purpose is to end a support
+-- ticket -- generating the ticket itself.
+registerReason = 'cis_libs refused RegisterCapability from cis_bridge: '
+    .. "add 'cis_bridge' to Security.AuthorizedResources"
+Bridge.register('database', 'other_db', nil, 'query', 'D6')
+rows = GetBridgeReport()
+dbRow = rowFor(rows, 'database')
+check(dbRow.label == 'NO AUTH ', 'an unauthorised resource says NO AUTH, not REFUSED')
+check(dbRow.label ~= 'REFUSED ',
+    'and is never told to stop another resource, because none is at fault')
+check(mentions(dbRow.fix, 'AuthorizedResources'),
+    'the fix names the allow-list cis_libs is refusing it from')
+check(mentions(dbRow.fix, 'cis_bridge'),
+    'and names this resource, which is what has to be added to it')
+
+-- An unrecognised reason passes cis_libs' own sentence through rather than
+-- replacing it with a guess. cis_libs knows why it refused; this file does not.
+registerReason = 'a reason this version has never seen'
+Bridge.register('database', 'other_db', nil, 'query', 'D7')
+registerFails = false
+rows = GetBridgeReport()
+dbRow = rowFor(rows, 'database')
+check(dbRow.label == 'REFUSED ', 'an unrecognised refusal still reports REFUSED')
+check(mentions(dbRow.fix, 'a reason this version has never seen'),
+    "and passes cis_libs' own sentence through as the explanation")
 
 -- ============================================ 7. the adapter never even ran
 --

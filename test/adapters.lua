@@ -357,15 +357,52 @@ local DiscordQueue = _G.DiscordQueue
 check(type(DiscordQueue) == 'table', 'the discord adapter publishes its queue')
 if type(DiscordQueue) == 'table' then
     local before = #DiscordQueue.items
-    check(DiscordQueue.push(nil, 't', 'm', 'red', false) == false, 'a nil webhook is refused')
-    check(DiscordQueue.push('', 't', 'm', 'red', false) == false, 'an empty webhook is refused')
-    check(DiscordQueue.push('https://discord.com/api/webhooks/CHANGE-ME/1', 't', 'm', 'red', false) == false,
-        'the CHANGE-ME placeholder is refused')
+    -- EVERY refusal, in one place. The URL rule is the adapter's only outbound
+    -- control, and each of these is a URL a stock config or a careless operator
+    -- actually produces.
+    local refusedUrls = {
+        { nil, 'a nil webhook' },
+        { '', 'an empty webhook' },
+        { 'CHANGE-ME', 'the bare placeholder' },
+        { 'https://discord.com/api/webhooks/CHANGE-ME/1', 'the documented placeholder URL' },
+        { 'https://your-server.example/api/webhooks/1/t', 'somebody else\'s webhook host' },
+        { 'https://discord.com/api/webhooks/1', 'a webhook URL with no token' },
+        { 'http://discord.com/api/webhooks/1/t', 'plain HTTP' },
+        { 'javascript:alert(1)', 'a javascript: URL' },
+        { 'https://discord.com/api/webhooks/1/t/../../admin', 'a path with traversal in it' },
+        { 12345, 'a number rather than a URL' },
+        { {}, 'a table rather than a URL' },
+    }
+    for _, case in ipairs(refusedUrls) do
+        check(DiscordQueue.push(case[1], 't', 'm', 'red', false) == false,
+            'refuses ' .. case[2])
+    end
     check(#DiscordQueue.items == before, 'and nothing was queued for any of them')
-    check(DiscordQueue.push('https://example.invalid/hook/1', 't', 'm', 'red', false) == true,
-        'a real-looking webhook is accepted')
+
+    -- The one thing that must be ACCEPTED. If this ever becomes false the whole
+    -- adapter is dead again, and in exactly the silent way it was before: nothing
+    -- queued, nothing errored, and an operator with a working webhook and no log.
+    -- Webhook-SHAPED, and obviously not one. The rule is a pattern over the
+    -- shape, so the positive case has to have a real shape; the token is a
+    -- word rather than base64 so nobody can mistake this line for a URL
+    -- somebody copied out of a working config.
+    local real = 'https://discord.com/api/webhooks/1234567890/not-a-real-token'
+    check(DiscordQueue.push(real, 't', 'm', 'red', false) == true,
+        'a well-formed Discord webhook is accepted')
     check(#DiscordQueue.items == before + 1, 'and is queued')
     table.remove(DiscordQueue.items)
+
+    -- The canary and ptb instances are real webhook hosts. Matching only
+    -- discord.com would silently break an operator testing on them.
+    check(DiscordQueue.push('https://canary.discord.com/api/webhooks/1/t', 't', 'm', 'red', false) == true,
+        'the canary host is accepted')
+    check(DiscordQueue.push('https://ptb.discord.com/api/webhooks/1/t', 't', 'm', 'red', false) == true,
+        'the ptb host is accepted')
+    check(DiscordQueue.push('https://discordapp.com/api/webhooks/1/t', 't', 'm', 'red', false) == true,
+        'the legacy discordapp host is accepted')
+    while #DiscordQueue.items > before do
+        table.remove(DiscordQueue.items)
+    end
 
     -- The bound. A queue that grows without limit on a server whose webhook is
     -- down is a memory leak with no operator signal, so the oldest entry is
@@ -373,7 +410,7 @@ if type(DiscordQueue) == 'table' then
     -- has been quietly truncating for an hour; the counter is the only thing
     -- that says so.
     for i = 1, 200 do
-        DiscordQueue.push('https://example.invalid/hook/1', 't' .. i, 'm', 'red', false)
+        DiscordQueue.push(real, 't' .. i, 'm', 'red', false)
     end
     check(#DiscordQueue.items <= 100, 'the queue is bounded')
     check(DiscordQueue.dropped > 0, 'and dropping is counted rather than silent')

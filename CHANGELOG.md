@@ -195,15 +195,49 @@ boundary.
   `depth`.
 - The Discord embed builder moved to `adapters/discord/embed.lua` so it can be
   loaded and tested without the engine.
+- The client-results handler now validates its rows before announcing anything. It
+  printed a report header, the player's name and a "reported N failures" summary
+  before looking at a single row, so a payload containing no valid rows produced a
+  block of console that reads exactly like a report arrived. An operator cannot
+  tell a report from a forgery of one, and the forgery is what a hostile client
+  produces on purpose.
 
 ### Verification
 
-128 assertions across three suites, each in a fresh Lua state so one cannot read
+411 assertions across seven suites, each in a fresh Lua state so one cannot read
 another's globals. Every fix above ships with an assertion that was observed
-failing first; the five that matter most were mutation-checked by hand — removing
-the bind-key normalisation, restoring the empty footer, collapsing `nil` to
-zero, removing the start-order wait, and dropping the report's `fix` field each
-produce failures.
+failing first, and the ones that matter were mutation-checked by hand. Twenty-four
+mutations were applied and reverted across the three releases in this file.
+
+**Seven of those mutations initially SURVIVED, and every one of them was more
+interesting than the ones that died:**
+
+- removing the cooldown's monotonic clock clamp, because the backwards-clock test
+  that existed passed either way — `now < next` is true for any smaller number,
+  so a naive comparison refused anyway. The clamp only matters when a clock
+  resets and every stored deadline lands in the future at once;
+- the malformed-source checks, which failed as a suite *crash* rather than as
+  assertions. CI was red either way; the diagnostic was not;
+- the realm rule, which fired on the very sentence written to explain that
+  `Cis.target` is a client surface;
+- the client-command cooldown assertion, which counted reports produced by a
+  client half that always printed "skipping: no target provider", so it passed
+  whether or not the cooldown existed;
+- the accidental-globals harness, which reported thirteen accidental globals —
+  all of them the harness complaining about the harness, because the stub engine
+  was installed before the permitted-name list;
+- the ownership rule, which compared a global's *name* against the file that
+  should create it, so every correct file failed. A rule that fires on correct
+  code gets disabled, and then the rule is gone and the bug it was for is still
+  there.
+
+Three harness bugs are recorded for the same reason. A `require` path was emitted
+as JSON, which is not a Lua table constructor. `fengari` has no filesystem, so
+the contract suite died on `io.open` and now has its source injected by the
+runner. And a `Wait(0)` stub that advanced the clock by exactly zero left
+`GetGameTimer()` constant, so a `while ... do Wait(0) end` model probe never
+terminated — a stub that hangs is worse than a missing stub, because it looks
+like a slow test.
 
 ---
 

@@ -109,7 +109,35 @@ end
 local capturedThreads = 0
 local declaredExports = {}
 
-local function noop() end
+-- A CALL BUDGET ON THE STUB ENGINE, and it exists because a shipped file that
+-- loops forever hangs the whole suite.
+--
+-- `test/globals.lua` EXECUTES what it audits, which is the whole trick -- you
+-- cannot watch what a file does without running it -- and that makes an infinite
+-- loop in a shipped file a hang rather than a failure. Confirmed by applying
+-- exactly that as a mutation: `while true do Wait(100) end` at the bottom of an
+-- adapter did not report anything, it stopped responding, and the only symptom
+-- was a CI step that timed out with no output.
+--
+-- A CI timeout is a red build and nothing else. It names no file, it names no
+-- loop, and it costs the full job timeout to learn that one line is wrong.
+--
+-- So every stub call is counted and the budget is spent loudly. Raising is
+-- better than hanging for the same reason a failing test beats a timeout: the
+-- error names the resource whose loop ate the budget.
+local STUB_CALL_BUDGET = 200000
+local stubCalls = 0
+local function spendBudget()
+    stubCalls = stubCalls + 1
+    if stubCalls > STUB_CALL_BUDGET then
+        error(('stub call budget of %d exhausted while loading the shipped code: a '
+            .. 'shipped file is looping, or one stubbed native is called far more '
+            .. 'often than any of them should be')
+            :format(STUB_CALL_BUDGET), 0)
+    end
+end
+
+local function noop() spendBudget() end
 
 -- A callable, indexable `exports`, for the same reason the other suites need
 -- one: a resource declares its exports by calling `exports(...)` and reaches
@@ -145,7 +173,7 @@ _G.AddEventHandler = function() end
 _G.GetResourceState = function() return 'missing' end
 _G.GetCurrentResourceName = function() return 'cis_bridge' end
 _G.GetResourceMetadata = function() return '1.1.0' end
-_G.GetGameTimer = function() return 0 end
+_G.GetGameTimer = function() spendBudget(); return 0 end
 _G.Wait = noop
 _G.GetPlayers = function() return {} end
 _G.TriggerClientEvent = noop

@@ -56,15 +56,43 @@ end
 -- ped. So "create a target on this entity" reports success either way, and a
 -- test that skipped the entity path would leave the one case that differs
 -- between the two providers entirely untested.
+--
+-- REQUESTED ONCE, POLLED AT 50ms.
+--
+-- The shape everybody writes is:
+--
+--     while not HasModelLoaded(hash) and GetGameTimer() < timeout do
+--         RequestModel(hash)
+--         Wait(0)
+--     end
+--
+-- and it is wrong in a way that only shows up in a profile. `RequestModel` is
+-- idempotent -- the request is queued on the first call and stays queued -- so
+-- calling it again every frame is 250 identical native calls over a slow load,
+-- and `Wait(0)` is 250 scheduler wakeups doing nothing but checking a flag. The
+-- project's budget is 0.00-0.02ms idle and this is not idle, but a diagnostic
+-- command is not the place to spend a frame budget either.
+--
+-- Fifty milliseconds is well under the time a person notices, and it is a
+-- quarter of the load time even on a bad asset. The deadline is unchanged, so a
+-- model that never arrives still costs five seconds and then reports that it
+-- never arrived.
+local MODEL_TIMEOUT_MS = 5000
+local MODEL_POLL_MS = 50
+
 local function withPed(fn)
     local hash = GetHashKey('a_m_m_business_01')
-    local timeout = GetGameTimer() + 5000
-    while not HasModelLoaded(hash) and GetGameTimer() < timeout do
-        RequestModel(hash)
-        Wait(0)
+    RequestModel(hash)
+    local deadline = GetGameTimer() + MODEL_TIMEOUT_MS
+    while not HasModelLoaded(hash) and GetGameTimer() < deadline do
+        Wait(MODEL_POLL_MS)
     end
     if not HasModelLoaded(hash) then
-        return nil, 'a_m_m_business_01 did not load'
+        -- Nothing to release: FiveM has no cancel-model-request call, and an
+        -- asset that never loaded holds nothing. The outstanding request simply
+        -- completes or is dropped by the streamer, which is the engine's job
+        -- and not something this file can or should interfere with.
+        return nil, ('a_m_m_business_01 did not load within %dms'):format(MODEL_TIMEOUT_MS)
     end
     local ped = CreatePed(0, hash, 0.0, 0.0, 72.0, 0.0, false, false)
     SetModelAsNoLongerNeeded(hash)

@@ -228,6 +228,7 @@ const SUITES = [
   { file: 'test/contract.lua', reads: true },
   { file: 'test/globals.lua' },
   { file: 'test/handler.lua' },
+  { file: 'test/perf.lua', reads: true },
 ]
 
 // A Lua long-bracket string, chosen so no escaping is needed at all.

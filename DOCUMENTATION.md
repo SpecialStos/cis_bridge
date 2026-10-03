@@ -538,6 +538,45 @@ target?", which is the first half of every support thread about a bridge.
 
 ---
 
+## §4.10 — Threads, loops and the frame budget
+
+The project rule is that nothing runs per-frame unless it is drawing, and the
+budget is 0.00–0.02 ms idle. This resource has **four loops**, and every one is
+accounted for:
+
+| Where | What | Cost |
+|---|---|---|
+| `shared/bridge.lua` | the start-order wait | one thread per adapter slot at boot, 500 ms poll, 60 s deadline, then it exits |
+| `adapters/discord/webhooks.lua` | the webhook drain | one thread, 1000 ms idle, the send interval otherwise |
+| `client/conformance.lua` | the model probe | on demand only, 50 ms poll, 5 s deadline |
+| `server/report.lua` | the boot printout | one thread, a single `Wait` then it returns |
+
+`test/perf.lua` enforces that account: no `Wait(0)` in shipped code, every loop
+waits, and a loop in a file that is not in the account above is a failure. That
+last rule is the one that matters — it is what makes the account mean something
+rather than being a description of today.
+
+**The model probe used to be `Wait(0)`.** It is the shape everybody writes:
+
+```lua
+while not HasModelLoaded(hash) and GetGameTimer() < timeout do
+    RequestModel(hash)
+    Wait(0)
+end
+```
+
+`RequestModel` is idempotent, so every call after the first is an identical
+native doing nothing, and the frame loop is 250 scheduler wakeups checking a flag
+a streamer sets on its own schedule. The request is made once and polled at 50 ms
+now — a quarter of the load time even on a bad asset, and far below what a person
+notices.
+
+There is no drawing in this resource: no `DrawMarker`, `DrawText3D` or
+`DrawRect`, no NUI, no spatial queries. `test/perf.lua` asserts that too, so
+adding one becomes a decision rather than a paste.
+
+---
+
 ## §5 — The boot report
 
 Printed once at boot, and on demand with `cis_bridge report`.
@@ -698,11 +737,11 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 411 assertions, no FiveM server required
+npm test          # 428 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
 ```
 
-Seven suites, each in a **fresh Lua state** so one cannot read another's globals:
+Eight suites, each in a **fresh Lua state** so one cannot read another's globals:
 
 | Suite | What it covers |
 |---|---|
@@ -712,6 +751,7 @@ Seven suites, each in a **fresh Lua state** so one cannot read another's globals
 | `test/ratelimit.lua` | the cooldown: ten thousand calls in one instant, per-source isolation, `playerDropped` cleanup, a recycled source id, a clock that goes backwards, a clock that is nil or raises, and malformed sources |
 | `test/contract.lua` | **compliance with cis_libs**, read from the source on disk: the two manifest requirements, no deprecated API, every `cis_libs` export called actually existing, realm boundaries, `Cis.*` namespaces cis_libs defines, and no internal cis_libs files included |
 | `test/globals.lua` | every shipped file loaded against a stubbed engine with a `_G` watcher on `__newindex`: no file writes an undeclared global, and each of the four declared globals is created only by the file that owns it |
+| `test/perf.lua` | **`Wait()` discipline**, checked against the source: no `Wait(0)` anywhere, every loop waits, every loop is in a written account of the four that exist, and no draw calls |
 | `test/handler.lua` | **the player-reachable surface, attacked.** Every payload category against `cis_bridge:server:conformanceResults`: wrong types, 10,000 rows, a megabyte-long string, 10,000-deep nesting, terminal escape sequences, format specifiers, and a 5,000-call flood. Plus both commands' ACLs |
 
 The technique worth knowing: the fakes **record the exact table they were

@@ -110,6 +110,20 @@ boundary.
 
 ### Fixed
 
+- **The client conformance suite's model probe was a per-frame loop.** The shape
+  everybody writes calls `RequestModel` inside a `Wait(0)` loop. The request is
+  idempotent, so every call after the first is an identical native doing nothing,
+  and the loop is 250 scheduler wakeups checking a flag the streamer sets on its
+  own schedule. The request is made once and polled at 50 ms — a quarter of the
+  load time even on a bad asset.
+
+- **A shipped file containing an infinite loop hung CI rather than failing it.**
+  The globals suite executes what it audits, which is the only way to watch what a
+  file does, and that turns an infinite loop into a timeout. Confirmed by
+  applying exactly that mutation: the step stopped responding with no output, and
+  the only symptom was a job that timed out naming nothing. The stub engine now
+  has a call budget, so the same mutation produces a message that names the file.
+
 - **Every boolean in `api.lua` read as `false`.** The manifest loader compared
   `lua_toboolean`'s result against `1`, and fengari returns a real boolean --
   so the comparison was false for `true` as well. Two validator rules were
@@ -140,6 +154,13 @@ boundary.
   the **output**, not merely that the handler did not raise — a handler that
   quietly prints a megabyte of attacker-chosen text is worse than one that
   crashes. It found one real bug and one vacuous test.
+
+- **`test/perf.lua`** — `Wait()` discipline, checked against the source rather
+  than asserted in a comment: no `Wait(0)` in any shipped file, every loop waits,
+  and every loop is in a written account of the four that exist. That last rule
+  is the one that matters — it is what stops the account becoming a description
+  of today. It also asserts there is no drawing at all, so adding a `DrawMarker`
+  becomes a decision rather than a paste.
 
 - **`test/globals.lua`** — loads all eighteen shipped files against a stubbed
   engine with a metatable on `_G` watching `__newindex`, and asserts that no file
@@ -235,9 +256,9 @@ boundary.
 
 ### Verification
 
-411 assertions across seven suites, each in a fresh Lua state so one cannot read
+428 assertions across eight suites, each in a fresh Lua state so one cannot read
 another's globals. Every fix above ships with an assertion that was observed
-failing first, and the ones that matter were mutation-checked by hand. Twenty-four
+failing first, and the ones that matter were mutation-checked by hand. Twenty-nine
 mutations were applied and reverted across the three releases in this file.
 
 **Seven of those mutations initially SURVIVED, and every one of them was more

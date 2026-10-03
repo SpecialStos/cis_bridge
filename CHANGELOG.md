@@ -155,6 +155,16 @@ boundary.
   quietly prints a megabyte of attacker-chosen text is worse than one that
   crashes. It found one real bug and one vacuous test.
 
+- **`test/adapters-matrix.lua`** — every adapter method against every return
+  shape the third party might produce, headless. The interesting differences
+  between these targets are entirely in their **return shapes**, and a live
+  conformance run can only test the one shape the install happens to produce:
+  qb-inventory refuses with a **string** (truthy in Lua, so a plain
+  `result ~= false` reports every failed add as a success), codem-inventory
+  refuses with `nil`, ox_target's `removeZone` returns **nothing** at all, and
+  mongodb refuses all six methods. Each is asserted against a fake that returns
+  it, plus the case where the provider raises.
+
 - **`test/perf.lua`** — `Wait()` discipline, checked against the source rather
   than asserted in a comment: no `Wait(0)` in any shipped file, every loop waits,
   and every loop is in a written account of the four that exist. That last rule
@@ -256,9 +266,9 @@ boundary.
 
 ### Verification
 
-428 assertions across eight suites, each in a fresh Lua state so one cannot read
+534 assertions across nine suites, each in a fresh Lua state so one cannot read
 another's globals. Every fix above ships with an assertion that was observed
-failing first, and the ones that matter were mutation-checked by hand. Twenty-nine
+failing first, and the ones that matter were mutation-checked by hand. Thirty-three
 mutations were applied and reverted across the three releases in this file.
 
 **Seven of those mutations initially SURVIVED, and every one of them was more

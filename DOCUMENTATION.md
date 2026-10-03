@@ -737,11 +737,11 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 428 assertions, no FiveM server required
+npm test          # 534 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
 ```
 
-Eight suites, each in a **fresh Lua state** so one cannot read another's globals:
+Nine suites, each in a **fresh Lua state** so one cannot read another's globals:
 
 | Suite | What it covers |
 |---|---|
@@ -751,8 +751,17 @@ Eight suites, each in a **fresh Lua state** so one cannot read another's globals
 | `test/ratelimit.lua` | the cooldown: ten thousand calls in one instant, per-source isolation, `playerDropped` cleanup, a recycled source id, a clock that goes backwards, a clock that is nil or raises, and malformed sources |
 | `test/contract.lua` | **compliance with cis_libs**, read from the source on disk: the two manifest requirements, no deprecated API, every `cis_libs` export called actually existing, realm boundaries, `Cis.*` namespaces cis_libs defines, and no internal cis_libs files included |
 | `test/globals.lua` | every shipped file loaded against a stubbed engine with a `_G` watcher on `__newindex`: no file writes an undeclared global, and each of the four declared globals is created only by the file that owns it |
+| `test/adapters-matrix.lua` | **every adapter method against every return shape.** qb-inventory's *string* refusal, codem's `nil`, ox_target's own record, mongodb's six refusals, the array-size arithmetic, a provider that raises |
 | `test/perf.lua` | **`Wait()` discipline**, checked against the source: no `Wait(0)` anywhere, every loop waits, every loop is in a written account of the four that exist, and no draw calls |
 | `test/handler.lua` | **the player-reachable surface, attacked.** Every payload category against `cis_bridge:server:conformanceResults`: wrong types, 10,000 rows, a megabyte-long string, 10,000-deep nesting, terminal escape sequences, format specifiers, and a 5,000-call flood. Plus both commands' ACLs |
+
+`test/adapters-matrix.lua` is the suite that makes the conformance suite
+trustworthy offline. The interesting differences between these targets are
+entirely in their **return shapes**, and a live run can only test the one shape
+the install happens to produce. qb-inventory reports a failure as a **string**,
+which is truthy in Lua, so every failed add reads as a success and a caller
+writing `if inventory.add(...) then give the item end` hands out the item. That
+is invisible on a server where nothing is being added.
 
 The technique worth knowing: the fakes **record the exact table they were
 handed**, because the interesting question is almost never "what did it answer"

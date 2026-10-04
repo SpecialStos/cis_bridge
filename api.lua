@@ -31,14 +31,30 @@ return {
         -- Cis.target.add for the shape, which is the abstraction's, not ours.
         CisBridgeTargetOx = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
-            use = 'ox_target. Returns { available, name, create, remove, exists }. Registered only when ox_target is started AND the configured target is ox_target',
+            use = 'ox_target. Registered only when ox_target is started AND the configured target is ox_target',
             realm = 'client',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'available', 'name', 'create', 'remove', 'exists' },
             signature = '()',
         },
         CisBridgeTargetQb = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
             use = 'qb-target. Takes a box zone as three numbers where ox_target takes a vector3, which is why it cannot be a flag on the other one',
             realm = 'client',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'available', 'name', 'create', 'remove', 'exists' },
             signature = '()',
         },
 
@@ -50,24 +66,56 @@ return {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
             use = 'oxmysql. The only target that supports Cis.db.transaction. Probes for the single/query exports and falls back, so an older build still serves both',
             realm = 'server',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'name', 'ready', 'query', 'single', 'scalar', 'insert', 'update', 'transaction' },
             signature = '()',
         },
         CisBridgeDatabaseMysqlConnector = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
             use = 'mysql-connector. Callback-first, bridged to await with a hard deadline. Refuses a transaction rather than faking one. NOT mysql-async, which is a different export set',
             realm = 'server',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'name', 'ready', 'query', 'single', 'scalar', 'insert', 'update', 'transaction' },
             signature = '()',
         },
         CisBridgeDatabaseGhmatti = {
             since = '1.0.0', ['until'] = '3.0.0', stable = false, deprecated = true,
             use = 'ghmattimysql, deprecated upstream. Present so installing the bridge does not break the last server still running it',
             realm = 'server',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'name', 'ready', 'query', 'single', 'scalar', 'insert', 'update', 'transaction' },
             signature = '()',
         },
         CisBridgeDatabaseMongodb = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
             use = 'mongodb. Registers so the platform can say it does not support MongoDB, rather than reporting a missing database capability',
             realm = 'server',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'name', 'ready', 'query', 'single', 'scalar', 'insert', 'update', 'transaction' },
             signature = '()',
         },
 
@@ -85,32 +133,72 @@ return {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
             use = 'ox_inventory. GPL-3.0: isolated in this one file, never vendored, never modified',
             realm = 'server',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'name', 'available', 'count', 'add', 'remove', 'canCarry' },
             signature = '()',
         },
         CisBridgeInventoryQb = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
             use = 'qb-inventory. Takes no metadata, and reports refusal as a STRING -- both differ from the others and neither can be a flag',
             realm = 'server',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'name', 'available', 'count', 'add', 'remove' },
             signature = '()',
         },
         CisBridgeInventoryQs = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
             use = 'qs-inventory',
             realm = 'server',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'name', 'available', 'count', 'add', 'remove' },
             signature = '()',
         },
         CisBridgeInventoryCodem = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
             use = 'codem-inventory. The only one with no boolean in its contract: HasItem and AddItem answer counts and nil',
             realm = 'server',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'name', 'available', 'count', 'add', 'remove' },
             signature = '()',
         },
 
         -- --------------------------------------------------------- discord
         CisBridgeDiscord = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
-            use = 'Discord webhooks. The ONLY outbound network request in the platform, which is why it is a file here rather than a function in a library. Returns { log, depth }',
+            use = 'Discord webhooks. The ONLY outbound network request in the platform, which is why it is a file here rather than a function in a library',
             realm = 'server',
+            -- The shape of the table this export ANSWERS, as data rather than as
+            -- prose. It was English until 1.1.0 -- "Returns { log, depth }" in
+            -- a sentence a reader has to parse -- and now `npm run docs`
+            -- renders it and `test/adapters-matrix.lua` compares it against
+            -- the table that is actually returned. A method added to an adapter
+            -- without updating this is a test failure; one listed here that the
+            -- adapter does not have is a test failure too.
+            returns = { 'log', 'depth' },
             signature = '()',
         },
 

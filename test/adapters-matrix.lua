@@ -479,6 +479,109 @@ for _, case in ipairs({
     check(A.create(nil) == false, ('%s refuses a nil spec'):format(case.name))
     check(A.create({}) == false, ('%s refuses a spec with no name'):format(case.name))
 end
+-- ================================ 3b. THE DOCUMENTED SHAPE IS THE REAL SHAPE
+--
+-- api.lua declares the methods each adapter ANSWERS with, `npm run docs`
+-- renders that into API.md, and this compares it against the table that is
+-- actually returned.
+--
+-- That closes the loop the reference needs and does not otherwise have. Before
+-- it the shape was prose -- "Returns { log, depth }" inside a sentence -- which
+-- means nothing could check it, and nothing could drift without a person
+-- noticing. Now a method ADDED to an adapter without updating api.lua fails
+-- here, and so does a method LISTED in api.lua that the adapter does not have,
+-- which is the one that would otherwise ship a reference promising a call that
+-- raises.
+--
+-- A plain map, written out. It was an inline table-of-tables lookup built out of
+-- table constructors on the spot, which returned nil for all ten adapters and
+-- reported "the adapter does not return a table" ten times -- a finding about
+-- every adapter in the resource, caused entirely by the expression asking the
+-- question.
+local SHAPE_OF = {
+    { label = 'ox_target',         file = 'adapters/target/ox_target.lua',        export = 'CisBridgeTargetOx',           key = 'ox_target' },
+    { label = 'qb-target',         file = 'adapters/target/qb_target.lua',        export = 'CisBridgeTargetQb',           key = 'qb-target' },
+    { label = 'oxmysql',           file = 'adapters/database/oxmysql.lua',        export = 'CisBridgeDatabaseOxmysql',    key = 'oxmysql' },
+    { label = 'mysql-connector',   file = 'adapters/database/mysql_connector.lua', export = 'CisBridgeDatabaseMysqlConnector', key = 'mysql-connector' },
+    { label = 'ghmattimysql',      file = 'adapters/database/ghmattimysql.lua',   export = 'CisBridgeDatabaseGhmatti',    key = 'ghmattimysql' },
+    { label = 'mongodb',           file = 'adapters/database/mongodb.lua',        export = 'CisBridgeDatabaseMongodb',    key = 'mongodb' },
+    { label = 'ox_inventory',      file = 'adapters/inventory/ox_inventory.lua',  export = 'CisBridgeInventoryOx',        key = 'ox_inventory' },
+    { label = 'qb-inventory',      file = 'adapters/inventory/qb_inventory.lua',  export = 'CisBridgeInventoryQb',        key = 'qb-inventory' },
+    { label = 'qs-inventory',      file = 'adapters/inventory/qs_inventory.lua',  export = 'CisBridgeInventoryQs',        key = 'qs-inventory' },
+    { label = 'codem-inventory',   file = 'adapters/inventory/codem_inventory.lua', export = 'CisBridgeInventoryCodem',  key = 'codem-inventory' },
+}
+
+local RETURNS = _G.__RETURNS or {}
+check(type(RETURNS) == 'table' and next(RETURNS) ~= nil,
+    'the harness handed over the documented return shapes')
+
+--- Compare a declared list against a real table, reporting what differs in
+--- terms an integrator can act on.
+local function checkShape(label, declared, actual)
+    check(type(actual) == 'table', ('%s returns a table'):format(label))
+    if type(actual) ~= 'table' or type(declared) ~= 'table' then return end
+
+    local missing, extra, seen = {}, {}, {}
+    for _, name in ipairs(declared) do
+        seen[name] = true
+        if type(actual[name]) ~= 'function' then
+            missing[#missing + 1] = name
+        end
+    end
+    for name in pairs(actual) do
+        if not seen[name] then extra[#extra + 1] = tostring(name) end
+    end
+    table.sort(extra)
+
+    check(#missing == 0,
+        ('%s has every method api.lua promises (missing: %s)')
+            :format(label, table.concat(missing, ', ')))
+    check(#extra == 0,
+        ('%s has no method api.lua does not mention (undocumented: %s)')
+            :format(label, table.concat(extra, ', ')))
+end
+
+for _, case in ipairs(SHAPE_OF) do
+    local declared = RETURNS[case.export]
+    check(type(declared) == 'table',
+        ('api.lua declares a return shape for %s'):format(case.export))
+    if type(declared) ~= 'table' then
+        -- Nothing to compare against, and the assertion above already said so.
+    else
+        -- A third party that exports every name it might be asked for, so the
+        -- adapter REGISTERS and the table it hands back is the real one.
+        local thirdParty = setmetatable({}, {
+            __index = function() return function() end end,
+        })
+        local loaded = load(case.file, { [case.key] = thirdParty })
+        checkShape(case.label .. ' adapter', declared,
+            loaded and loaded[case.export])
+    end
+end
+
+-- The Discord capability is a TABLE BUILT INLINE rather than a set of `Adapter`
+-- functions, so it is loaded the same way and checked the same way.
+do
+    local declared = RETURNS.CisBridgeDiscord
+    check(type(declared) == 'table',
+        'api.lua declares a return shape for CisBridgeDiscord')
+    if type(declared) == 'table' then
+        dofile('adapters/discord/embed.lua')
+        local loaded = load('adapters/discord/webhooks.lua', nil, { runThread = false })
+        checkShape('discord capability', declared, loaded and loaded.CisBridgeDiscord)
+    end
+end
+
+-- The three service exports answer a value rather than a method table, so they
+-- deliberately declare no `returns`. Asserting that they declare NONE is what
+-- stops somebody "helpfully" documenting a shape that does not exist.
+for _, name in ipairs({ 'RunConformance', 'GetConformanceResults', 'GetBridgeReport' }) do
+    check(RETURNS[name] == nil,
+        ('%s returns a value rather than a method table, so api.lua says nothing '
+            .. 'about a shape for it'):format(name))
+end
+
+
 
 -- ============================================ 4. THE REGISTRATION SIDE
 --

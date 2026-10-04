@@ -133,19 +133,61 @@ function readValue(L) {
 }
 
 function readTable(L) {
-  const out = {}
-  const n = lua.lua_rawlen(L, -1)
-  for (let i = 1; i <= n; i++) {
-    lua.lua_rawgeti(L, -1, i)
-    out.push(readValue(L))
-  }
+  // ONE PASS, NO `push`.
+  //
+  // It was `const out = {}` followed by `out.push(...)` in a loop over `rawlen`,
+  // then a SECOND `lua_next` pass for the hash part. That works exactly as
+  // long as no table has an array part -- and until 1.1.0 not one in api.lua
+  // did, they were all `{ key = value }` constructors, so `rawlen` was zero,
+  // the loop never ran, and the missing `push` on a plain object was never
+  // called.
+  //
+  // Adding `returns = { 'log', 'depth' }` -- the first genuine array this file
+  // has ever held -- made the latent bug fire at once and loudly:
+  //
+  //     TypeError: out.push is not a function
+  //
+  // which reads like a broken api.lua and is not. It is a converter that had
+  // never been asked to do the thing it claimed to do.
+  //
+  // The obvious repair -- skip the numeric keys in the second pass -- is worse:
+  // `lua_next` requires [table, key] on entry, so popping anything mid-iteration
+  // raises "invalid key to 'next'". Iterating ONCE removes both problems. There
+  // is no `push`, there is no second pass, and the stack stays balanced because
+  // `readValue` is what pops the value.
+  const isArray = lua.lua_rawlen(L, -1) > 0
+  const out = isArray ? [] : {}
   lua.lua_pushnil(L)
   while (lua.lua_next(L, -2) !== 0) {
-    // lua_next leaves [table, key, value] and readValue is balanced, so this
-    // is [table, key] -- exactly what lua_next needs to advance. Re-seeding
-    // with nil here would restart the iteration and never terminate.
-    const key = lua.lua_tojsstring(L, -2)
-    out[key] = readValue(L)
+    // lua_next leaves [table, key, value] and readValue is balanced, so this is
+    // [table, key] -- exactly what lua_next needs to advance. Re-seeding with nil
+    // here would restart the iteration and never terminate.
+    // THE KEY IS NOT ALWAYS A STRING.
+    //
+    // On a table with a sequence part, `lua_next` yields the INDICES -- 1, 2, 3
+    // -- as numbers, and `lua_tojsstring` on a number does not render. It
+    // returned null, every subsequent key comparison failed, and the error that
+    // came out the other end was
+    //
+    //     PANIC: invalid key to 'next'
+    //
+    // from inside fengari's table code, four frames below this file, which says
+    // nothing about the manifest and less about the converter.
+    //
+    // api.lua held no array until 1.1.0, so this branch had never run.
+    const keyType = lua.lua_type(L, -2)
+    const key = keyType === lua.LUA_TNUMBER
+      ? lua.lua_tonumber(L, -2)
+      : lua.lua_tojsstring(L, -2)
+    const value = readValue(L)
+    if (typeof key === 'number') {
+      // A Lua sequence is 1-based and a JS array is 0-based. Assigning by index
+      // rather than by `push` keeps the order for a table that MIXES sequence
+      // and hash parts, which `{ 'a', extra = 1 }` is.
+      if (isArray) { out[key - 1] = value } else { out[key] = value }
+    } else {
+      out[key] = value
+    }
   }
   lua.lua_pop(L, 1)
   return out
@@ -250,6 +292,31 @@ function validate(manifest, surface, opts = {}) {
     }
     if (meta.deprecated === true && meta.use === undefined) {
       r.add('E013', `${where}.use`, 'a deprecated entry must say what to use instead')
+    }
+    // `returns` is the shape of the table an adapter export ANSWERS with. It
+    // was English until 1.1.0 -- "Returns { log, depth }" inside a sentence a
+    // reader has to parse -- and an API reference that describes a shape in
+    // prose cannot be checked against the code that produces it.
+    //
+    // Now it is data, and `test/adapters-matrix.lua` compares it against the
+    // table each adapter ACTUALLY returns. Which makes the rule here worth
+    // having: a shape that is not a list of names is a shape nothing can check.
+    if (meta.returns !== undefined) {
+      if (!Array.isArray(meta.returns) || meta.returns.length === 0) {
+        r.add('E014', `${where}.returns`,
+          `must be a non-empty array of method names (got ${JSON.stringify(meta.returns)})`)
+      } else {
+        const seen = new Set()
+        for (const m of meta.returns) {
+          if (typeof m !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(m)) {
+            r.add('E014', `${where}.returns`,
+              `every entry must be an identifier (got ${JSON.stringify(m)})`)
+          } else if (seen.has(m)) {
+            r.add('E014', `${where}.returns`, `lists ${m} twice`)
+          }
+          seen.add(m)
+        }
+      }
     }
     if (meta.deprecated === true && meta.until === false) {
       r.add('E011', `${where}.until`, 'a deprecated entry needs a removal major in `until`')

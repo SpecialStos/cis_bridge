@@ -40,11 +40,27 @@ exports['cis_bridge']:<Name>(())
 
 ghmattimysql, deprecated upstream. Present so installing the bridge does not break the last server still running it
 
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeDatabaseGhmatti() --> { name = <function>, ready = <function>, query = <function>, single = <function>, scalar = <function>, insert = <function>, update = <function>, transaction = <function> }
+```
+
 ### `CisBridgeDatabaseMongodb`
 
 `()` · server · since 1.0.0
 
 mongodb. Registers so the platform can say it does not support MongoDB, rather than reporting a missing database capability
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeDatabaseMongodb() --> { name = <function>, ready = <function>, query = <function>, single = <function>, scalar = <function>, insert = <function>, update = <function>, transaction = <function> }
+```
 
 ### `CisBridgeDatabaseMysqlConnector`
 
@@ -52,17 +68,41 @@ mongodb. Registers so the platform can say it does not support MongoDB, rather t
 
 mysql-connector. Callback-first, bridged to await with a hard deadline. Refuses a transaction rather than faking one. NOT mysql-async, which is a different export set
 
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeDatabaseMysqlConnector() --> { name = <function>, ready = <function>, query = <function>, single = <function>, scalar = <function>, insert = <function>, update = <function>, transaction = <function> }
+```
+
 ### `CisBridgeDatabaseOxmysql`
 
 `()` · server · since 1.0.0
 
 oxmysql. The only target that supports Cis.db.transaction. Probes for the single/query exports and falls back, so an older build still serves both
 
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeDatabaseOxmysql() --> { name = <function>, ready = <function>, query = <function>, single = <function>, scalar = <function>, insert = <function>, update = <function>, transaction = <function> }
+```
+
 ### `CisBridgeDiscord`
 
 `()` · server · since 1.0.0
 
-Discord webhooks. The ONLY outbound network request in the platform, which is why it is a file here rather than a function in a library. Returns { log, depth }
+Discord webhooks. The ONLY outbound network request in the platform, which is why it is a file here rather than a function in a library
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeDiscord() --> { log = <function>, depth = <function> }
+```
 
 ### `CisBridgeInventoryCodem`
 
@@ -70,11 +110,27 @@ Discord webhooks. The ONLY outbound network request in the platform, which is wh
 
 codem-inventory. The only one with no boolean in its contract: HasItem and AddItem answer counts and nil
 
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeInventoryCodem() --> { name = <function>, available = <function>, count = <function>, add = <function>, remove = <function> }
+```
+
 ### `CisBridgeInventoryOx`
 
 `()` · server · since 1.0.0
 
 ox_inventory. GPL-3.0: isolated in this one file, never vendored, never modified
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeInventoryOx() --> { name = <function>, available = <function>, count = <function>, add = <function>, remove = <function>, canCarry = <function> }
+```
 
 ### `CisBridgeInventoryQb`
 
@@ -82,11 +138,27 @@ ox_inventory. GPL-3.0: isolated in this one file, never vendored, never modified
 
 qb-inventory. Takes no metadata, and reports refusal as a STRING -- both differ from the others and neither can be a flag
 
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeInventoryQb() --> { name = <function>, available = <function>, count = <function>, add = <function>, remove = <function> }
+```
+
 ### `CisBridgeInventoryQs`
 
 `()` · server · since 1.0.0
 
 qs-inventory
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeInventoryQs() --> { name = <function>, available = <function>, count = <function>, add = <function>, remove = <function> }
+```
 
 ### `GetBridgeReport`
 
@@ -121,13 +193,29 @@ exports['cis_bridge']:<Name>(())
 
 `()` · client · since 1.0.0
 
-ox_target. Returns { available, name, create, remove, exists }. Registered only when ox_target is started AND the configured target is ox_target
+ox_target. Registered only when ox_target is started AND the configured target is ox_target
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeTargetOx() --> { available = <function>, name = <function>, create = <function>, remove = <function>, exists = <function> }
+```
 
 ### `CisBridgeTargetQb`
 
 `()` · client · since 1.0.0
 
 qb-target. Takes a box zone as three numbers where ox_target takes a vector3, which is why it cannot be a flag on the other one
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeTargetQb() --> { available = <function>, name = <function>, create = <function>, remove = <function>, exists = <function> }
+```
 
 ## Events
 

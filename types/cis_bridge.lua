@@ -43,7 +43,7 @@ function cis_bridge.CisBridgeDatabaseMysqlConnector() end
 function cis_bridge.CisBridgeDatabaseOxmysql() end
 
 ---@class cis_bridge.CisBridgeDiscord
----@field use string Discord webhooks. The ONLY outbound network request in the platform, which is why it is a file here rather than a function in a library. Returns { log, depth }
+---@field use string Discord webhooks. The ONLY outbound network request in the platform, which is why it is a file here rather than a function in a library
 ---@field since string 1.0.0
 ---@field deprecated boolean false
 ---@field realm string server
@@ -78,7 +78,7 @@ function cis_bridge.CisBridgeInventoryQb() end
 function cis_bridge.CisBridgeInventoryQs() end
 
 ---@class cis_bridge.CisBridgeTargetOx
----@field use string ox_target. Returns { available, name, create, remove, exists }. Registered only when ox_target is started AND the configured target is ox_target
+---@field use string ox_target. Registered only when ox_target is started AND the configured target is ox_target
 ---@field since string 1.0.0
 ---@field deprecated boolean false
 ---@field realm string client

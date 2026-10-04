@@ -162,6 +162,24 @@ boundary.
 
 ### Added
 
+- **The return shape of every adapter is now data, and it is checked.** Each
+  adapter export declares the methods it answers with as a `returns` list. It was
+  prose before -- `Returns { log, depth }` inside a sentence -- and a reference
+  that describes a shape in prose cannot be checked against the code that
+  produces it. `npm run docs` renders it, `test/adapters-matrix.lua` compares it
+  against the table the adapter actually returns, and `npm run test:api` checks
+  it is well formed (E014, with a fixture). A method added to an adapter without
+  updating `api.lua` now fails; so does a method listed there that the adapter
+  does not have, which is the one that would ship a reference promising a call
+  that raises.
+
+- **`npm run audit:docs`** -- the prose check the other gates do not do. Every
+  export named in all three documents, realms matching the manifest sections
+  that load them, a deprecated export not labelled stable anywhere, every config
+  key the code reads present in the schema table, every command the runbook tells
+  an operator to type actually registered, and the README's target table
+  accounting for every adapter file on disk.
+
 - **`test/handler.lua`** — attacks the one surface a player can reach, with the
   payload categories that have actually broken things rather than a sample:
   non-tables, a 10,000-row payload, a row carrying a megabyte of text, a
@@ -316,7 +334,7 @@ boundary.
 
 ### Verification
 
-582 assertions across ten suites, each in a fresh Lua state so one cannot read
+630 assertions across ten suites, each in a fresh Lua state so one cannot read
 another's globals. Every fix above ships with an assertion that was observed
 failing first, and the ones that matter were mutation-checked by hand. Thirty-eight
 mutations were applied and reverted across the three releases in this file.

@@ -121,6 +121,19 @@ for (const realm of ['server', 'client']) {
     w()
     w(spec.use)
     w()
+    // The return shape, as a block a reader can copy rather than parse out of a
+    // sentence. It was prose until 1.1.0, which meant an integrator had to read
+    // "Returns { log, depth }" and know it was a list of method names.
+    if (Array.isArray(spec.returns) && spec.returns.length > 0) {
+      w('Answers with a method table. These are the names, and nothing else is')
+      w('in it — `test/adapters-matrix.lua` compares this list against the table')
+      w('the adapter actually returns, so the two cannot drift apart quietly.')
+      w()
+      w('```lua')
+      w(`${name}() --> { ${spec.returns.map((m) => `${m} = <function>`).join(', ')} }`)
+      w('```')
+      w()
+    }
   }
 }
 

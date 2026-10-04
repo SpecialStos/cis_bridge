@@ -105,7 +105,7 @@ jobs:
         run: npm run test:syntax
 
       - name: Run the test suites
-        # Ten suites, each in a fresh Lua state. 582 assertions.
+        # Ten suites, each in a fresh Lua state. 630 assertions.
         run: npm test
 
       - name: Validate api.lua against the registered surface
@@ -132,6 +132,19 @@ jobs:
         # reference rendered it STABLE, because the manifest loader compared
         # lua_toboolean's result against 1 and fengari returns a real boolean.
         run: npm run docs:check
+
+      - name: The documentation tells the truth
+        # api.lua matches the source, and API.md is what the generator would
+        # write -- neither asks whether the PROSE is right, and the prose is
+        # where documentation actually fails.
+        #
+        # This asserts that every export is named in all three documents, that
+        # the realms match the manifest sections that load them, that a
+        # deprecated export is not labelled stable anywhere, that every config
+        # key the code reads is in the table, that every command the runbook
+        # tells an operator to type is actually registered, and that the README's
+        # table of targets accounts for every adapter file on disk.
+        run: npm run audit:docs
 
       - name: Fail if the exports binding regresses
         # Guards the `self` trap documented at the top of init.lua.

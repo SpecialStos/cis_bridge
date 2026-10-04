@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const fengari = require('fengari')
+const { loadManifest } = require('../tools/validate-api.js')
 
 const lua = fengari.lua
 const lauxlib = fengari.lauxlib
@@ -229,7 +230,7 @@ const SUITES = [
   { file: 'test/globals.lua' },
   { file: 'test/handler.lua' },
   { file: 'test/perf.lua', reads: true },
-  { file: 'test/adapters-matrix.lua' },
+  { file: 'test/adapters-matrix.lua', returns: true },
   { file: 'test/runner.lua' },
 ]
 
@@ -252,12 +253,25 @@ function luaLongString(s) {
 }
 
 // `{"path": "source"}` is JSON and JSON is not Lua. A table constructor wants
-// `["path"] = "source"`, and every value wants a quoted string. Emitting JSON
-// into a Lua VM produces "'}' expected near ':'", which is a harness bug wearing
-// the costume of a source bug.
+// `["path"] = "source"`, and every value wants to be a Lua literal. Emitting
+// JSON into a Lua VM produces "'}' expected near ':'", which is a harness bug
+// wearing the costume of a source bug.
+//
+// TWO SHAPES, because this is handed two. A source file is a string. A
+// documented return shape is an ARRAY of strings. The first version handled
+// only the first and reached `s.match` on an array -- which is how a helper
+// announces it has never been given the other shape.
+function luaValue(v) {
+  if (typeof v === 'string') return luaLongString(v)
+  if (Array.isArray(v)) {
+    return '{ ' + v.map((x) => luaLongString(String(x))).join(', ') + ' }'
+  }
+  return luaLongString(String(v))
+}
+
 function luaTableString(map) {
   const parts = Object.keys(map).map((k) =>
-    `  [${JSON.stringify(k)}] = ${luaLongString(map[k])}`)
+    `  [${JSON.stringify(k)}] = ${luaValue(map[k])}`)
   return `{\n${parts.join(',\n')}\n}`
 }
 
@@ -265,6 +279,29 @@ let failed = false
 for (const suite of SUITES) {
   const L = newState()
   runFile(L, 'shared/bridge.lua')
+  if (suite.returns) {
+    // The documented RETURN SHAPE, from api.lua, handed to a suite that has the
+    // real adapters in its hands. This is what makes API.md trustworthy: the
+    // list in api.lua is not documentation of the shape, it is the shape, and a
+    // test compares it against the table that is actually returned.
+    //
+    // Loaded through the SAME loader tools/validate-api.js uses, because two
+    // loaders for one data file is two answers to the same question.
+    const api = loadManifest(path.join(root, 'api.lua'),
+      path.join(root, 'api.lua'))
+    if (api.error) {
+      throw new Error(`api.lua did not load: ${api.error}`)
+    }
+    const returns = {}
+    for (const [name, spec] of Object.entries(api.table.exports || {})) {
+      if (Array.isArray(spec.returns)) returns[name] = spec.returns
+    }
+    const st = lauxlib.luaL_dostring(L, toLua(`__RETURNS = ${luaTableString(returns)}`))
+    if (st !== lua.LUA_OK) {
+      throw new Error(`could not hand the return shapes to ${suite.file}: `
+        + lua.lua_tojsstring(L, -1))
+    }
+  }
   if (suite.reads) {
     const bare = {}
     const sources = loadSources(root, {}, bare)

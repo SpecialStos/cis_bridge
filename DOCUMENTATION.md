@@ -802,7 +802,7 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 582 assertions, no FiveM server required
+npm test          # 630 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
                   # + lint + the generated-docs check + the count check
 ```
@@ -849,6 +849,35 @@ nothing fail. So it is not a substitute for a static analyser: **luacheck is the
 authority on undeclared names and CI installs it**, while this runs everywhere,
 including on a machine with no Lua toolchain at all, and catches the writes that
 actually happen. Both run; neither is described as the other.
+
+### The return shape is data, and it is checked
+
+Every adapter export declares the methods it answers with, as a list:
+
+```lua
+CisBridgeDiscord = {
+    returns = { 'log', 'depth' },
+    ...
+}
+```
+
+It was prose until 1.1.0 — `Returns { log, depth }` inside a sentence — and a
+reference that describes a shape in prose cannot be checked against the code that
+produces it. Now:
+
+- **`npm run docs` renders it** into `API.md` as a copyable block.
+- **`test/adapters-matrix.lua` compares it** against the table the adapter
+  actually returns. A method added to an adapter without updating `api.lua` is a
+  failure, and so is a method listed in `api.lua` that the adapter does not
+  have — which is the one that would ship a reference promising a call that
+  raises.
+- **`npm run test:api` checks it is well formed** (E014): a non-empty array of
+  unique identifiers.
+
+The three service exports — `RunConformance`, `GetConformanceResults`,
+`GetBridgeReport` — answer a *value* rather than a method table, and declare no
+`returns`. The suite asserts they declare none, so nobody "helpfully" documents a
+shape that does not exist.
 
 `test/contract.lua` is the odd one out: fengari has no filesystem, so the
 harness reads the source and hands it over in two forms — comments stripped, and

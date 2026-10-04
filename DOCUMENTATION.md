@@ -263,7 +263,54 @@ server's generic one: the framework is what bans on it.
 ---
 
 
-### 3.4 Databases (server)
+### 3.4 The `lib` shim (server)
+
+Two exports, so a resource written against ox_lib runs unmodified.
+
+```lua
+local lib   = exports['cis_bridge']:GetLibShim()
+local proxy = exports['cis_bridge']:GetDbProxy()
+```
+
+**Why an export and not a `lib` global.** Each FiveM resource has its own Lua
+state. `TriggerEvent` does not cross resources, and a global written in
+cis_bridge is a different variable from the one a consumer reads — so a shim
+that "installs lib" installs it for itself and nobody else, which looks like a
+working drop-in on the machine it was built on and does nothing on a customer's.
+One line in the consumer is not nothing: it **says** the dependency is there, so
+removing cis_bridge is something you find out from your own source.
+
+| Surface | Translation |
+|---|---|
+| `lib.callback.await(name, delay, target, cb)` | `Cis.callback.await(name, ...)` — **delay and target are DROPPED**, because there is no target argument |
+| `lib.callback.register` / `.call` / `.send` | `TryAwaitCallback` / `CallCallback` |
+| `lib.zones.box/sphere/poly` | `CreateZone`, with the size passed through **unchanged** |
+| `lib.zone(id)` | an object with `:remove()`, which a bare string does not have |
+| `proxy.query/single/scalar/insert/update` | `DbQuery` / `DbSingle` / `DbScalar` / `DbInsert` / `DbUpdate` |
+| `proxy.transaction` | `DbTransaction`, **with the bind key normalised** |
+
+Three rules that are easy to get wrong and are each pinned by a test:
+
+1. **`TryAwaitCallback`, never `AwaitCallback`.** The latter calls `error()` on a
+   refusal by design — its single result slot cannot tell a refusal from a
+   handler that returned `false`. ox_lib *answers* `false`, so routing through
+   the raising form turns a missing callback into an exception inside a consumer
+   that never expected one.
+2. **The box size is NOT halved here.** `CreateZone` halves what it is given.
+   Halving again makes a zone a quarter of the intended size — smaller than the
+   thing it was written for, so the resource loads and nobody can reach it.
+3. **A refusal is passed through with its reason unchanged.** Every consumer
+   branches on that string.
+
+It also **validates** rather than forwarding everything, because the one case
+worth catching is an inverted vertical extent: `minZ > maxZ` describes a box from
+the ceiling to the floor, the zone is never entered, and nothing reports an
+error. NaN and infinity are refused too — `NaN ~= NaN`, so the naive comparison
+lets a NaN straight through.
+
+---
+
+### 3.5 Databases (server)
 
 Registered into `cis_libs` as the `database` capability. All are **await-style**:
 they yield and answer `nil` at their deadline.
@@ -383,7 +430,7 @@ find no database capability, and read that as a **broken product** rather than
 an **unsupported target**. An adapter that says "not supported" is worth more
 than no adapter at all.
 
-### 3.5 Discord (server)
+### 3.6 Discord (server)
 
 `CisBridgeDiscord`. **The only outbound network request in the whole platform**,
 which is why it is a file here rather than a function in a library.
@@ -779,7 +826,7 @@ for you.
 - No webhook URLs. Those belong to cis_libs, and it does not re-export them —
   a URL printed into another resource's console is how a secret ends up in a
   support ticket. The consequence is that the Discord adapter has **no cosmetics**
-  to render, and an embed with an empty `footer` is a 400. See §3.5.
+  to render, and an embed with an empty `footer` is a 400. See §3.6.
 - No database credentials, no connection strings, no ACE groups.
 - No operator feature switches. The only thing that gates outbound logging is
   cis_libs's own `Config.Printing.UseDiscordLogs`, checked before the capability

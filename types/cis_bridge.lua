@@ -119,6 +119,20 @@ function cis_bridge.GetBridgeReport() end
 ---@field realm string server
 function cis_bridge.GetConformanceResults() end
 
+---@class cis_bridge.GetDbProxy
+---@field use string The legacy MySQL / oxmysql surface over cis_libs' Db* exports, including the transaction bind-key normalisation
+---@field since string 1.2.0
+---@field deprecated boolean false
+---@field realm string server
+function cis_bridge.GetDbProxy() end
+
+---@class cis_bridge.GetLibShim
+---@field use string ox_lib's lib.callback and lib.zones over cis_libs. A zone size is passed through UNCHANGED because CreateZone halves it itself
+---@field since string 1.2.0
+---@field deprecated boolean false
+---@field realm string server
+function cis_bridge.GetLibShim() end
+
 ---@class cis_bridge.RunConformance
 ---@field use string The same as the cis_bridge console command. Runs every registered target, or one named. Sends nothing and writes nothing to a player
 ---@field since string 1.0.0

@@ -202,6 +202,28 @@ return {
             signature = '()',
         },
 
+        -- ------------------------------------------------------ lib shims
+        -- EXPORTS, NOT A GLOBAL, and the difference is the platform: each FiveM
+        -- resource has its own Lua state, so a `lib` written here is a different
+        -- variable from the `lib` a consumer reads. A shim that "installs lib"
+        -- installs it for itself and nobody else -- which looks like a working
+        -- drop-in on the machine it was tested on. A consumer takes it with one
+        -- line, and that line SAYS cis_bridge is being used.
+        GetLibShim = {
+            since = '1.2.0', ['until'] = false, stable = true, deprecated = false,
+            use = "ox_lib's lib.callback and lib.zones over cis_libs. A zone size is passed through UNCHANGED because CreateZone halves it itself",
+            realm = 'server',
+            signature = '()',
+            returns = { 'callback', 'zones', 'zone' },
+        },
+        GetDbProxy = {
+            since = '1.2.0', ['until'] = false, stable = true, deprecated = false,
+            use = "The legacy MySQL / oxmysql surface over cis_libs' Db* exports, including the transaction bind-key normalisation",
+            realm = 'server',
+            signature = '()',
+            returns = { 'query', 'single', 'scalar', 'insert', 'update', 'transaction' },
+        },
+
         -- -------------------------------------------------------- framework
         -- Registered into cis_libs as the `framework` capability, BOTH realms.
         -- Two exports rather than one, because the client registry is separate

@@ -390,7 +390,7 @@ boundary.
 
 ### Verification
 
-733 assertions across eleven suites, each in a fresh Lua state so one cannot read
+804 assertions across twelve suites, each in a fresh Lua state so one cannot read
 another's globals. Every fix above ships with an assertion that was observed
 failing first, and the ones that matter were mutation-checked by hand. Thirty-eight
 mutations were applied and reverted across the three releases in this file.

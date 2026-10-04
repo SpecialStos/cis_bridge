@@ -149,6 +149,7 @@ server_scripts {
     'adapters/discord/webhooks.lua',
     'server/report.lua',
     'server/framework.lua',
+    'server/lib.lua',
     'server/ratelimit.lua',
     'server/conformance.lua',
 }

@@ -233,6 +233,7 @@ const SUITES = [
   { file: 'test/adapters-matrix.lua', returns: true },
   { file: 'test/runner.lua' },
   { file: 'test/framework.lua' },
+  { file: 'test/shim.lua' },
 ]
 
 // A Lua long-bracket string, chosen so no escaping is needed at all.

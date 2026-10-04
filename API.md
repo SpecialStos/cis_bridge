@@ -33,6 +33,8 @@ exports['cis_bridge']:<Name>(())
 | `CisBridgeInventoryQs` | `()` | 1.0.0 | stable | `adapters/inventory/qs_inventory.lua` |
 | `GetBridgeReport` | `()` | 1.1.0 | stable | `server/report.lua` |
 | `GetConformanceResults` | `()` | 1.0.0 | stable | `server/conformance.lua` |
+| `GetDbProxy` | `()` | 1.2.0 | stable | `server/lib.lua` |
+| `GetLibShim` | `()` | 1.2.0 | stable | `server/lib.lua` |
 | `RunConformance` | `(target)` | 1.0.0 | stable | `server/conformance.lua` |
 
 ### `CisBridgeDatabaseGhmatti`
@@ -186,6 +188,34 @@ One row per adapter slot: { slot, label, target, detail, fix }. The same content
 `()` · server · since 1.0.0
 
 The last run, as an array of { target, name, ok, skipped, detail }. For a support thread
+
+### `GetDbProxy`
+
+`()` · server · since 1.2.0
+
+The legacy MySQL / oxmysql surface over cis_libs' Db* exports, including the transaction bind-key normalisation
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+GetDbProxy() --> { query = <function>, single = <function>, scalar = <function>, insert = <function>, update = <function>, transaction = <function> }
+```
+
+### `GetLibShim`
+
+`()` · server · since 1.2.0
+
+ox_lib's lib.callback and lib.zones over cis_libs. A zone size is passed through UNCHANGED because CreateZone halves it itself
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+GetLibShim() --> { callback = <function>, zones = <function>, zone = <function> }
+```
 
 ### `RunConformance`
 

@@ -864,7 +864,7 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 733 assertions, no FiveM server required
+npm test          # 804 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
                   # + lint + the generated-docs check + the count check
 ```

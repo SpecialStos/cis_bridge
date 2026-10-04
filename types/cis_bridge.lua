@@ -49,6 +49,20 @@ function cis_bridge.CisBridgeDatabaseOxmysql() end
 ---@field realm string server
 function cis_bridge.CisBridgeDiscord() end
 
+---@class cis_bridge.CisBridgeFrameworkClient
+---@field use string Client framework capability: ShowNotification and IsLoaded only. No Notify -- a client cannot address a player
+---@field since string 1.2.0
+---@field deprecated boolean false
+---@field realm string client
+function cis_bridge.CisBridgeFrameworkClient() end
+
+---@class cis_bridge.CisBridgeFrameworkServer
+---@field use string Server framework capability: NormalizedPlayer, Notify, IsLoaded, HasPermission, GetPlayerJob. Falls back to it only when no other resource provides one
+---@field since string 1.2.0
+---@field deprecated boolean false
+---@field realm string server
+function cis_bridge.CisBridgeFrameworkServer() end
+
 ---@class cis_bridge.CisBridgeInventoryCodem
 ---@field use string codem-inventory. The only one with no boolean in its contract: HasItem and AddItem answer counts and nil
 ---@field since string 1.0.0

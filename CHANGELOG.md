@@ -6,6 +6,62 @@ moved.
 
 ---
 
+## 1.2.0
+
+cis_bridge becomes **self-sufficient for framework**.
+
+### Added
+
+- **A `framework` capability provider.** `cis_libs` + `cis_bridge`, and nothing
+  else, is now a working platform on ESX, QBox, QBCore, ND_Core or standalone:
+  detect the framework, normalise a player, answer a permission check.
+
+  It **stands down when `cis_core` is present**, because the slot is
+  first-registrant-wins and two providers for it is a boot-order bug whose
+  failure reproduces on one machine and not another. `cis_core`'s implementation
+  is better -- it has live evidence behind it and this does not -- so this is
+  the fallback that makes the pair self-sufficient rather than a second, worse
+  copy of something that already exists. The boot report says who won.
+
+  Detection order is `ox_core`, `qbx_core`, `qb-core`, `es_extended`/`esx_core`,
+  `nd_core`, then standalone. `qbx_core` precedes `qb-core` because they are
+  DIFFERENT APIs -- `qbx_core` removed `GetCoreObject` in 1.9 -- and detection
+  probes by PRESENCE, never by calling, precisely because calling `GetCoreObject`
+  to see whether it works rejects every current QBox server.
+
+- **`HasPermission` never answers true by accident.** If no framework can
+  evaluate a permission the answer is false. An ACL that cannot be evaluated must
+  not evaluate to allowed, and a bridge that guessed "allowed" would hand every
+  admin action in the platform to every player.
+
+- **`test/framework.lua`** — precedence across six candidates, the cis_libs slot
+  contract, player normalisation for four frameworks, the standalone fallback,
+  the yield decision, and **Mutation A**: a framework accessor that throws must
+  be caught on *every* framework path rather than one.
+
+### Fixed
+
+- Three of this release's own assertions were wrong and said so in the file.
+  `kind` is the family the provider dispatches on, not the resource name. The
+  rejection list is `rejected`, not `probeFailures`. And a QBCore
+  `Functions.HasPermission` fake written as `function(_, src, perm)` received
+  every argument shifted one slot left, because it is called dot-style with two
+  arguments and the fake assumed a method call.
+
+- A mutation survived that was a real hole rather than an equivalent one: the
+  Missing-API branch of `HasPermission` was unreachable by any test, so making
+  it return `true` was invisible. The suite now states the property directly
+  across every outcome, including one descriptor built by hand because
+  `detect()` cannot produce it.
+
+- One mutation survives and is **equivalent**, written down as such rather than
+  left as a gate that "passed": removing the pcall from inside `rawPlayer`
+  changes nothing observable, because `NormalizedPlayer` already pcalls it. Per
+  the project's own method, the question asked is what wrong behaviour is still
+  reachable after the change -- and the answer is none.
+
+---
+
 ## 1.1.0
 
 The release where a stock install stopped being broken.
@@ -334,7 +390,7 @@ boundary.
 
 ### Verification
 
-630 assertions across ten suites, each in a fresh Lua state so one cannot read
+733 assertions across eleven suites, each in a fresh Lua state so one cannot read
 another's globals. Every fix above ships with an assertion that was observed
 failing first, and the ones that matter were mutation-checked by hand. Thirty-eight
 mutations were applied and reverted across the three releases in this file.

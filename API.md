@@ -6,7 +6,7 @@ is not what they would produce.
 
 | | |
 |---|---|
-| Product version | `1.1.0` |
+| Product version | `1.2.0` |
 | Contract major | `api = 1` |
 | Schema | `0` |
 | Generated from | `api.lua` + a scan of every file the manifest loads |
@@ -26,6 +26,7 @@ exports['cis_bridge']:<Name>(())
 | `CisBridgeDatabaseMysqlConnector` | `()` | 1.0.0 | stable | `adapters/database/mysql_connector.lua` |
 | `CisBridgeDatabaseOxmysql` | `()` | 1.0.0 | stable | `adapters/database/oxmysql.lua` |
 | `CisBridgeDiscord` | `()` | 1.0.0 | stable | `adapters/discord/webhooks.lua` |
+| `CisBridgeFrameworkServer` | `()` | 1.2.0 | stable | `server/framework.lua` |
 | `CisBridgeInventoryCodem` | `()` | 1.0.0 | stable | `adapters/inventory/codem_inventory.lua` |
 | `CisBridgeInventoryOx` | `()` | 1.0.0 | stable | `adapters/inventory/ox_inventory.lua` |
 | `CisBridgeInventoryQb` | `()` | 1.0.0 | stable | `adapters/inventory/qb_inventory.lua` |
@@ -102,6 +103,20 @@ the adapter actually returns, so the two cannot drift apart quietly.
 
 ```lua
 CisBridgeDiscord() --> { log = <function>, depth = <function> }
+```
+
+### `CisBridgeFrameworkServer`
+
+`()` · server · since 1.2.0
+
+Server framework capability: NormalizedPlayer, Notify, IsLoaded, HasPermission, GetPlayerJob. Falls back to it only when no other resource provides one
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeFrameworkServer() --> { NormalizedPlayer = <function>, Notify = <function>, IsLoaded = <function>, HasPermission = <function>, GetPlayerJob = <function> }
 ```
 
 ### `CisBridgeInventoryCodem`
@@ -186,8 +201,23 @@ exports['cis_bridge']:<Name>(())
 
 | Export | Signature | Since | Stability | Declared in |
 |---|---|---|---|---|
+| `CisBridgeFrameworkClient` | `()` | 1.2.0 | stable | `client/framework.lua` |
 | `CisBridgeTargetOx` | `()` | 1.0.0 | stable | `adapters/target/ox_target.lua` |
 | `CisBridgeTargetQb` | `()` | 1.0.0 | stable | `adapters/target/qb_target.lua` |
+
+### `CisBridgeFrameworkClient`
+
+`()` · client · since 1.2.0
+
+Client framework capability: ShowNotification and IsLoaded only. No Notify -- a client cannot address a player
+
+Answers with a method table. These are the names, and nothing else is
+in it — `test/adapters-matrix.lua` compares this list against the table
+the adapter actually returns, so the two cannot drift apart quietly.
+
+```lua
+CisBridgeFrameworkClient() --> { ShowNotification = <function>, IsLoaded = <function> }
+```
 
 ### `CisBridgeTargetOx`
 

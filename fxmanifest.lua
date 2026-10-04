@@ -47,7 +47,7 @@ game 'gta5'
 name "Cisoko - Bridge - Integrator SDK"
 description "One adapter and one conformance test per third-party target."
 author "Cisoko"
-version "1.1.0"
+version "1.2.0"
 lua54 'yes'
 
 dependencies {
@@ -77,6 +77,17 @@ dependencies {
 -- same ground and states the fix for each row -- see server/report.lua.
 
 shared_scripts {
+    -- `register` only. `detect`, `normalize` and `provider` are `require`d by it
+    -- and are deliberately NOT listed: listing a module that something requires
+    -- runs it twice, once as a script and once on first require. That is the
+    -- same mistake `server/ratelimit.lua` and `adapters/discord/embed.lua` were
+    -- removed for, and putting it back is how it gets back.
+    --
+    -- It is loaded before `server/framework.lua` and `client/framework.lua`,
+    -- which is what makes `CisBridgeFrameworkRegister` defined by the time they
+    -- run. That ordering is asserted in test/contract.lua.
+    'shared/framework/register.lua',
+
     -- The `Cis` facade, the same one line a consumer's own resource uses.
     -- cis_bridge calls it in the conformance suites, and it was not loaded:
     -- `Cis` was nil, so every server conformance test reported "the test ran
@@ -93,6 +104,7 @@ shared_scripts {
 }
 
 client_scripts {
+    'client/framework.lua',
     'adapters/target/ox_target.lua',
     'adapters/target/qb_target.lua',
     'client/conformance.lua',
@@ -136,6 +148,7 @@ server_scripts {
     'adapters/discord/embed.lua',
     'adapters/discord/webhooks.lua',
     'server/report.lua',
+    'server/framework.lua',
     'server/ratelimit.lua',
     'server/conformance.lua',
 }

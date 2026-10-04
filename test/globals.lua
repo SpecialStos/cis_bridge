@@ -100,7 +100,7 @@ for _, name in ipairs({
     -- The two published modules. They exist so the unit suites can load them
     -- without the FiveM engine, and the manifest lists them ahead of the file
     -- that reads each one -- see fxmanifest.lua.
-    'CisBridgeEmbed', 'CisBridgeRateLimit',
+    'CisBridgeEmbed', 'CisBridgeRateLimit', 'CisBridgeFrameworkRegister',
     'exports', 'CreateThread', 'RegisterNetEvent', 'RegisterCommand',
     'AddEventHandler', 'GetResourceState', 'GetCurrentResourceName',
     'GetResourceMetadata', 'GetGameTimer', 'Wait', 'GetPlayers',
@@ -214,9 +214,15 @@ local SHIPPED_FILES = {
     'adapters/inventory/codem_inventory.lua',
     'adapters/discord/embed.lua',
     'adapters/discord/webhooks.lua',
+    'shared/framework/detect.lua',
+    'shared/framework/normalize.lua',
+    'shared/framework/provider.lua',
+    'shared/framework/register.lua',
     'server/report.lua',
+    'server/framework.lua',
     'server/ratelimit.lua',
     'server/conformance.lua',
+    'client/framework.lua',
     'client/conformance.lua',
     'api.lua',
 }
@@ -277,9 +283,10 @@ local OWNERS = {
     DiscordQueue = 'adapters/discord/webhooks.lua',
     CisBridgeEmbed = 'adapters/discord/embed.lua',
     CisBridgeRateLimit = 'server/ratelimit.lua',
+    CisBridgeFrameworkRegister = 'shared/framework/register.lua',
 }
 local OWNED = { 'Bridge', 'Conformance', 'Report', 'DiscordQueue',
-    'CisBridgeEmbed', 'CisBridgeRateLimit' }
+    'CisBridgeEmbed', 'CisBridgeRateLimit', 'CisBridgeFrameworkRegister' }
 
 -- CLEARED ONCE, HERE, BEFORE THE SWEEP -- and not per file.
 --
@@ -361,9 +368,15 @@ check(rawget(_G, 'Bridge') ~= nil, 'and the four are back after the ownership sw
 local ZERO_INDEXED = {
     'adapters/discord/webhooks.lua',
     'adapters/discord/embed.lua',
+    'shared/framework/detect.lua',
+    'shared/framework/normalize.lua',
+    'shared/framework/provider.lua',
+    'shared/framework/register.lua',
     'server/report.lua',
+    'server/framework.lua',
     'server/ratelimit.lua',
     'server/conformance.lua',
+    'client/framework.lua',
     'client/conformance.lua',
     'shared/bridge.lua',
     'test/adapters.lua',

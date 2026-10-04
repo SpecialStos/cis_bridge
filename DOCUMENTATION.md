@@ -201,7 +201,69 @@ keeps `false` as `nil` rather than collapsing it to zero, because zero means
 "they have none" and `nil` means "unknown" — and that reading gates every dupe
 check in the platform.
 
-### 3.3 Databases (server)
+### 3.3 Framework (server and client)
+
+Registered into cis_libs as the **`framework`** capability, on both realms. This is
+what makes `cis_libs + cis_bridge` a working platform on its own: detect a
+framework, normalise a player, answer a permission check, and nothing else.
+
+**It stands down when `cis_core` is present.** The slot is first-registrant-wins,
+so two providers for it is a boot-order bug — whichever starts first wins and the
+other silently never registers, which reproduces on one machine and not another.
+`cis_core`'s implementation is better than this one (live evidence behind it,
+none here), so `cis_bridge` asks first and the boot report says who won.
+
+| Detected | Precedence | Why there |
+|---|---|---|
+| `ox_core` | 1st | QBox under its earlier name; a server still running it has chosen it |
+| `qbx_core` | 2nd | QBox current. **Before `qb-core`: they are different APIs** — `qbx_core` removed `GetCoreObject` in 1.9, and an adapter written for one and pointed at the other raises on its first call |
+| `qb-core` | 3rd | QBCore legacy |
+| `es_extended`, `esx_core` | 4th | ESX Legacy |
+| `nd_core` | 5th | ND_Core |
+| *standalone* | fallback | nothing installed — a **working configuration**, not a failure |
+
+Detection **probes by presence, never by calling.** Calling `GetCoreObject` to see
+whether it works is the defect: on a modern QBox build it raises, so a call-based
+probe rejects every current QBox server and falls through to standalone.
+
+Every framework call is under `pcall`. A framework raising must become
+`false, reason`, never an error inside a consumer that called `NormalizedPlayer`
+innocently.
+
+**`HasPermission` never answers `true` by accident.** If no framework can
+evaluate it the answer is `false`. An ACL that cannot be evaluated must not
+evaluate to allowed.
+
+| Export | Realm | Methods |
+|---|---|---|
+| `CisBridgeFrameworkServer` | server | `NormalizedPlayer`, `Notify`, `IsLoaded`, `HasPermission`, `GetPlayerJob` |
+| `CisBridgeFrameworkClient` | client | `ShowNotification`, `IsLoaded` |
+
+No `Notify` on the client half: a client cannot address a player, and offering
+it invites a call whose `src` means nothing.
+
+#### One player shape, four frameworks
+
+```
+{ id, name, job, grade, label, identifier, money }
+```
+
+| | QBox / QBCore | ESX Legacy |
+|---|---|---|
+| name | `PlayerData.charinfo.firstname` + `.lastname` | `xPlayer.getName()` |
+| job | `PlayerData.job.name` | `getJob().label` — ESX has **no** separate name |
+| grade | `PlayerData.job.grade.level` | `getJob().grade_level` |
+| money | `PlayerData.money` is an **object**, summed | `getMoney()` |
+| identifier | `citizenid` | `getIdentifier()` |
+
+`grade` is always a **number**, whatever the framework hands over, because a
+consumer compares against it. The framework's own identifier wins over the
+server's generic one: the framework is what bans on it.
+
+---
+
+
+### 3.4 Databases (server)
 
 Registered into `cis_libs` as the `database` capability. All are **await-style**:
 they yield and answer `nil` at their deadline.
@@ -321,7 +383,7 @@ find no database capability, and read that as a **broken product** rather than
 an **unsupported target**. An adapter that says "not supported" is worth more
 than no adapter at all.
 
-### 3.4 Discord (server)
+### 3.5 Discord (server)
 
 `CisBridgeDiscord`. **The only outbound network request in the whole platform**,
 which is why it is a file here rather than a function in a library.
@@ -717,7 +779,7 @@ for you.
 - No webhook URLs. Those belong to cis_libs, and it does not re-export them —
   a URL printed into another resource's console is how a secret ends up in a
   support ticket. The consequence is that the Discord adapter has **no cosmetics**
-  to render, and an embed with an empty `footer` is a 400. See §3.4.
+  to render, and an embed with an empty `footer` is a 400. See §3.5.
 - No database credentials, no connection strings, no ACE groups.
 - No operator feature switches. The only thing that gates outbound logging is
   cis_libs's own `Config.Printing.UseDiscordLogs`, checked before the capability
@@ -802,7 +864,7 @@ already has every permission you have. These are guards against accidents.
 
 ```
 npm install
-npm test          # 630 assertions, no FiveM server required
+npm test          # 733 assertions, no FiveM server required
 npm run test:all  # + syntax check + the api contract self-test
                   # + lint + the generated-docs check + the count check
 ```

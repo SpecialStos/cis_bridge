@@ -20,7 +20,7 @@
 
 return {
     name = 'cis_bridge',
-    version = '1.1.0',
+    version = '1.2.0',
     api = 1,
     schema = 0,
 
@@ -200,6 +200,31 @@ return {
             -- adapter does not have is a test failure too.
             returns = { 'log', 'depth' },
             signature = '()',
+        },
+
+        -- -------------------------------------------------------- framework
+        -- Registered into cis_libs as the `framework` capability, BOTH realms.
+        -- Two exports rather than one, because the client registry is separate
+        -- and resolves only framework/target/doorsClient: a server registration
+        -- says nothing about the client one.
+        --
+        -- It registers ONLY when nothing else holds the slot. The slot is
+        -- first-registrant-wins, `cis_core` already provides `framework`
+        -- properly, and two providers for one slot is a boot-order bug whose
+        -- failure reproduces on one machine and not another.
+        CisBridgeFrameworkServer = {
+            since = '1.2.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'Server framework capability: NormalizedPlayer, Notify, IsLoaded, HasPermission, GetPlayerJob. Falls back to it only when no other resource provides one',
+            realm = 'server',
+            signature = '()',
+            returns = { 'NormalizedPlayer', 'Notify', 'IsLoaded', 'HasPermission', 'GetPlayerJob' },
+        },
+        CisBridgeFrameworkClient = {
+            since = '1.2.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'Client framework capability: ShowNotification and IsLoaded only. No Notify -- a client cannot address a player',
+            realm = 'client',
+            signature = '()',
+            returns = { 'ShowNotification', 'IsLoaded' },
         },
 
         -- ---------------------------------------------------- conformance
